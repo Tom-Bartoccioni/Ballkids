@@ -1,0 +1,476 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+// ============================================
+// UTILISATEURS & AUTHENTIFICATION
+// ============================================
+// UserRole: ADMIN | COACH
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  firstName String
+  lastName  String
+  role      String   @default("COACH") // ADMIN | COACH
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  coachProfile     Coach?
+  selectionScores  SelectionScore[]
+  trainingScores   TrainingScore[]
+  tournamentScores TournamentScore[]
+
+  @@map("users")
+}
+
+// ============================================
+// TOURNOI
+// ============================================
+
+model Tournament {
+  id          String   @id @default(cuid())
+  name        String
+  year        Int
+  startDate   DateTime
+  endDate     DateTime
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  ballkids                  Ballkid[]
+  coaches                   Coach[]
+  teams                     Team[]
+  tournamentDays            TournamentDay[]
+  selectionSession          SelectionSession?
+  trainingSessions          TrainingSession[]
+  coachPlannedAvailabilities CoachPlannedAvailability[]
+
+  @@map("tournaments")
+}
+
+// ============================================
+// RAMASSEURS DE BALLES
+// ============================================
+// BallkidStatus: PENDING | REGISTERED | SELECTED | RESERVE | REJECTED
+// Gender: MALE | FEMALE | OTHER
+
+model Ballkid {
+  id           String   @id @default(cuid())
+  status       String   @default("PENDING") // PENDING | REGISTERED | SELECTED | RESERVE | REJECTED
+  tournamentId String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Informations personnelles
+  firstName     String
+  lastName      String
+  birthDate     DateTime
+  gender        String   // MALE | FEMALE | OTHER
+  club          String?
+  email         String
+  phone         String?
+  phoneFather   String?  // Téléphone du père
+  phoneMother   String?  // Téléphone de la mère
+  address       String?
+  postalCode    String?
+  city          String?
+  licenseNumber String?
+  photoUrl      String?  // Chemin vers la photo
+  isVeteran     Boolean  @default(false) // Ancien (a déjà participé)
+
+  // Équipement
+  tshirtSize    String?
+  shortSize     String?
+  tracksuitSize String?
+  shoeSize      String?
+
+  // Relations
+  tournament        Tournament          @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  selectionScores   SelectionScore[]
+  trainingScores    TrainingScore[]
+  absences          Absence[]
+  teamAssignments   TeamAssignment[]
+  tournamentScores  TournamentScore[]
+  teamCaptains      TeamCaptain[]
+
+  @@map("ballkids")
+}
+
+// ============================================
+// ABSENCES
+// ============================================
+// AbsenceType: SELECTION | TRAINING | TOURNAMENT
+
+model Absence {
+  id        String   @id @default(cuid())
+  ballkidId String
+  type      String   // SELECTION | TRAINING | TOURNAMENT
+  date      DateTime
+  reason    String?
+  createdAt DateTime @default(now())
+
+  // Relations
+  ballkid          Ballkid          @relation(fields: [ballkidId], references: [id], onDelete: Cascade)
+  trainingSession  TrainingSession? @relation(fields: [trainingSessionId], references: [id])
+  trainingSessionId String?
+  tournamentDay    TournamentDay?   @relation(fields: [tournamentDayId], references: [id])
+  tournamentDayId  String?
+
+  @@map("absences")
+}
+
+// ============================================
+// SÉLECTION INITIALE
+// ============================================
+
+model SelectionSession {
+  id           String   @id @default(cuid())
+  tournamentId String   @unique
+  date         DateTime
+  isCompleted  Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  tournament Tournament       @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  criteria   SelectionCriteria[]
+  scores     SelectionScore[]
+
+  @@map("selection_sessions")
+}
+
+model SelectionCriteria {
+  id                 String  @id @default(cuid())
+  selectionSessionId String
+  name               String
+  abbreviation       String
+  maxScore           Float   @default(10)
+  weight             Float   @default(1)
+  isCalculated       Boolean @default(false)
+  formula            String?
+  order              Int
+
+  // Relations
+  selectionSession SelectionSession @relation(fields: [selectionSessionId], references: [id], onDelete: Cascade)
+  scores           SelectionScoreDetail[]
+
+  @@map("selection_criteria")
+}
+
+model SelectionScore {
+  id                 String   @id @default(cuid())
+  selectionSessionId String
+  ballkidId          String
+  scorerId           String   @map("scorer_id")
+  totalScore         Float?
+  rank               Int?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  // Relations
+  selectionSession SelectionSession       @relation(fields: [selectionSessionId], references: [id], onDelete: Cascade)
+  ballkid          Ballkid                @relation(fields: [ballkidId], references: [id], onDelete: Cascade)
+  scorer           User                   @relation(fields: [scorerId], references: [id])
+  details          SelectionScoreDetail[]
+
+  @@unique([selectionSessionId, ballkidId, scorerId])
+  @@map("selection_scores")
+}
+
+model SelectionScoreDetail {
+  id                  String @id @default(cuid())
+  selectionScoreId    String
+  selectionCriteriaId String
+  value               Float
+
+  // Relations
+  selectionScore   SelectionScore    @relation(fields: [selectionScoreId], references: [id], onDelete: Cascade)
+  selectionCriteria SelectionCriteria @relation(fields: [selectionCriteriaId], references: [id], onDelete: Cascade)
+
+  @@unique([selectionScoreId, selectionCriteriaId])
+  @@map("selection_score_details")
+}
+
+// ============================================
+// SÉANCES DE FORMATION
+// ============================================
+
+model TrainingSession {
+  id           String   @id @default(cuid())
+  tournamentId String
+  sessionNumber Int
+  date         DateTime
+  isCompleted  Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  tournament Tournament       @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  criteria   TrainingCriteria[]
+  scores     TrainingScore[]
+  absences   Absence[]
+
+  @@unique([tournamentId, sessionNumber])
+  @@map("training_sessions")
+}
+
+model TrainingCriteria {
+  id                String  @id @default(cuid())
+  trainingSessionId String
+  name              String
+  abbreviation      String
+  maxScore          Float   @default(10)
+  weight            Float   @default(1)
+  isCalculated      Boolean @default(false)
+  formula           String?
+  order             Int
+
+  // Relations
+  trainingSession TrainingSession      @relation(fields: [trainingSessionId], references: [id], onDelete: Cascade)
+  scores          TrainingScoreDetail[]
+
+  @@map("training_criteria")
+}
+
+model TrainingScore {
+  id                String   @id @default(cuid())
+  trainingSessionId String
+  ballkidId         String
+  scorerId          String
+  totalScore        Float?
+  isPresent         Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relations
+  trainingSession TrainingSession      @relation(fields: [trainingSessionId], references: [id], onDelete: Cascade)
+  ballkid         Ballkid              @relation(fields: [ballkidId], references: [id], onDelete: Cascade)
+  scorer          User                 @relation(fields: [scorerId], references: [id])
+  details         TrainingScoreDetail[]
+
+  @@unique([trainingSessionId, ballkidId, scorerId])
+  @@map("training_scores")
+}
+
+model TrainingScoreDetail {
+  id                 String @id @default(cuid())
+  trainingScoreId    String
+  trainingCriteriaId String
+  value              Float
+
+  // Relations
+  trainingScore    TrainingScore    @relation(fields: [trainingScoreId], references: [id], onDelete: Cascade)
+  trainingCriteria TrainingCriteria @relation(fields: [trainingCriteriaId], references: [id], onDelete: Cascade)
+
+  @@unique([trainingScoreId, trainingCriteriaId])
+  @@map("training_score_details")
+}
+
+// ============================================
+// NOTES TOURNOI (PAR JOUR)
+// ============================================
+
+model TournamentScore {
+  id              String   @id @default(cuid())
+  tournamentDayId String
+  ballkidId       String
+  scorerId        String
+  totalScore      Float?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  tournamentDay TournamentDay @relation(fields: [tournamentDayId], references: [id], onDelete: Cascade)
+  ballkid       Ballkid       @relation(fields: [ballkidId], references: [id], onDelete: Cascade)
+  scorer        User          @relation(fields: [scorerId], references: [id])
+
+  @@unique([tournamentDayId, ballkidId, scorerId])
+  @@map("tournament_scores")
+}
+
+// ============================================
+// ÉQUIPES
+// ============================================
+
+model Team {
+  id           String   @id @default(cuid())
+  tournamentId String
+  name         String
+  order        Int
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  tournament  Tournament       @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  assignments TeamAssignment[]
+  courtTeams  CourtTeam[]
+  captains    TeamCaptain[]
+
+  @@unique([tournamentId, name])
+  @@map("teams")
+}
+
+model TeamAssignment {
+  id              String   @id @default(cuid())
+  teamId          String
+  ballkidId       String
+  tournamentDayId String?
+  isReserve       Boolean  @default(false)
+  position        Int?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  team          Team           @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  ballkid       Ballkid        @relation(fields: [ballkidId], references: [id], onDelete: Cascade)
+  tournamentDay TournamentDay? @relation(fields: [tournamentDayId], references: [id])
+
+  @@map("team_assignments")
+}
+
+// ============================================
+// COACHS
+// ============================================
+
+model Coach {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  tournamentId String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  user                  User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tournament            Tournament                 @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  assignments           CoachAssignment[]
+  availabilities        CoachAvailability[]
+  plannedAvailabilities CoachPlannedAvailability[]
+
+  @@map("coaches")
+}
+
+// Planned availability - stored by dayNumber, doesn't require TournamentDay to exist
+model CoachPlannedAvailability {
+  id           String   @id @default(cuid())
+  coachId      String
+  tournamentId String
+  dayNumber    Int
+  createdAt    DateTime @default(now())
+
+  // Relations
+  coach      Coach      @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+
+  @@unique([coachId, tournamentId, dayNumber])
+  @@map("coach_planned_availabilities")
+}
+
+model CoachAvailability {
+  id              String   @id @default(cuid())
+  coachId         String
+  tournamentDayId String
+  createdAt       DateTime @default(now())
+
+  // Relations
+  coach         Coach         @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  tournamentDay TournamentDay @relation(fields: [tournamentDayId], references: [id], onDelete: Cascade)
+
+  @@unique([coachId, tournamentDayId])
+  @@map("coach_availabilities")
+}
+
+model CoachAssignment {
+  id              String   @id @default(cuid())
+  coachId         String
+  tournamentDayId String
+  courtId         String
+  createdAt       DateTime @default(now())
+
+  // Relations
+  coach         Coach         @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  tournamentDay TournamentDay @relation(fields: [tournamentDayId], references: [id], onDelete: Cascade)
+  court         Court         @relation(fields: [courtId], references: [id], onDelete: Cascade)
+
+  @@unique([coachId, courtId])
+  @@map("coach_assignments")
+}
+
+// ============================================
+// PLANNING TOURNOI
+// ============================================
+
+model TournamentDay {
+  id           String   @id @default(cuid())
+  tournamentId String
+  dayNumber    Int
+  date         DateTime
+  ballkidCount Int
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  tournament         Tournament          @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  courts             Court[]
+  coachAssignments   CoachAssignment[]
+  coachAvailabilities CoachAvailability[]
+  teamAssignments    TeamAssignment[]
+  absences           Absence[]
+  tournamentScores   TournamentScore[]
+  teamCaptains       TeamCaptain[]
+
+  @@unique([tournamentId, dayNumber])
+  @@map("tournament_days")
+}
+
+model Court {
+  id              String @id @default(cuid())
+  tournamentDayId String
+  name            String
+  teamCount       Int
+  order           Int
+
+  // Relations
+  tournamentDay    TournamentDay     @relation(fields: [tournamentDayId], references: [id], onDelete: Cascade)
+  coachAssignments CoachAssignment[]
+  courtTeams       CourtTeam[]
+
+  @@map("courts")
+}
+
+model CourtTeam {
+  id      String @id @default(cuid())
+  courtId String
+  teamId  String
+  order   Int
+
+  // Relations
+  court Court @relation(fields: [courtId], references: [id], onDelete: Cascade)
+  team  Team  @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@map("court_teams")
+}
+
+model TeamCaptain {
+  id              String   @id @default(cuid())
+  teamId          String
+  tournamentDayId String
+  ballkidId       String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  team          Team          @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  tournamentDay TournamentDay @relation(fields: [tournamentDayId], references: [id], onDelete: Cascade)
+  ballkid       Ballkid       @relation(fields: [ballkidId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, tournamentDayId])
+  @@map("team_captains")
+}
