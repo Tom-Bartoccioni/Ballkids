@@ -355,7 +355,7 @@ export default function BallkidsPage() {
                         <td className="p-4">
                           {ballkid.photoUrl ? (
                             <img 
-                              src={`/api${ballkid.photoUrl}`} 
+                              src={ballkid.photoUrl} 
                               alt={`${ballkid.firstName} ${ballkid.lastName}`}
                               className="w-10 h-10 rounded-full object-cover"
                             />

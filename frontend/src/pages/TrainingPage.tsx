@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input'
 import { useToast } from '@/hooks/use-toast'
 import { 
   GraduationCap, CheckCircle, Clock, Save, Search,
-  ArrowUpDown, ArrowUp, ArrowDown, Upload, Users, UserX, Settings, X, Pencil, Star
+  ArrowUpDown, ArrowUp, ArrowDown, Upload, Users, UserX, Settings, X, Pencil, Star, User
 } from 'lucide-react'
 
 type SortKey = 'lastName' | 'firstName' | 'session1' | 'session2' | 'session3' | 'session4' | 'average' | 'sessionsAttended'
@@ -459,8 +459,15 @@ export default function TrainingPage() {
                         <td className="p-4">
                           <Link 
                             to={`/ballkids/${item.id}?from=training`}
-                            className="font-medium hover:text-primary hover:underline"
+                            className="flex items-center gap-3 font-medium hover:text-primary hover:underline"
                           >
+                            {item.photoUrl ? (
+                              <img src={item.photoUrl} alt="" className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
+                            ) : (
+                              <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
+                                <User className="w-4 h-4 text-gray-400" />
+                              </div>
+                            )}
                             {item.lastName} {item.firstName}
                           </Link>
                         </td>
@@ -591,8 +598,15 @@ export default function TrainingPage() {
                           <td className="p-4">
                             <Link 
                               to={`/ballkids/${item.id}?from=training`}
-                              className="font-medium hover:text-primary hover:underline"
+                              className="flex items-center gap-3 font-medium hover:text-primary hover:underline"
                             >
+                              {item.photoUrl ? (
+                                <img src={item.photoUrl} alt="" className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
+                              ) : (
+                                <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
+                                  <User className="w-4 h-4 text-gray-400" />
+                                </div>
+                              )}
                               {item.lastName} {item.firstName}
                             </Link>
                           </td>

@@ -359,8 +359,8 @@ export default function TeamsPage() {
         onDragLeave={handleDragLeave}
         onDrop={() => handleDrop(assignment.ballkid, teamId, isReserve)}
         className={`
-          flex items-center gap-2 p-2 rounded transition-all
-          ${isReserve ? 'bg-purple-50' : 'bg-gray-50'}
+          inline-flex items-center gap-1 px-1.5 py-0.5 rounded transition-all text-xs whitespace-nowrap
+          ${isReserve ? 'bg-purple-50 border border-purple-200' : 'bg-gray-50 border border-gray-200'}
           ${isDragging ? 'opacity-50 scale-95' : ''}
           ${isDropTarget ? 'ring-2 ring-blue-500 bg-blue-50' : ''}
           ${isPending ? 'ring-2 ring-amber-400 bg-amber-50' : ''}
@@ -368,29 +368,18 @@ export default function TeamsPage() {
         `}
       >
         {isDraggable && isAdmin && (
-          <GripVertical className="w-4 h-4 text-gray-400 flex-shrink-0" />
-        )}
-        {assignment.ballkid.photoUrl ? (
-          <img 
-            src={`/api${assignment.ballkid.photoUrl}`}
-            alt={`${assignment.ballkid.firstName} ${assignment.ballkid.lastName}`}
-            className="w-7 h-7 rounded-full object-cover flex-shrink-0"
-          />
-        ) : (
-          <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ${isReserve ? 'bg-purple-200' : 'bg-gray-200'}`}>
-            <User className={`w-3 h-3 ${isReserve ? 'text-purple-400' : 'text-gray-400'}`} />
-          </div>
+          <GripVertical className="w-3 h-3 text-gray-400 flex-shrink-0" />
         )}
         <Link 
           to={`/ballkids/${assignment.ballkid.id}?from=teams`}
-          className="text-sm font-medium flex-1 truncate hover:underline"
+          className="font-medium hover:underline"
           onClick={(e) => e.stopPropagation()}
         >
           {assignment.ballkid.lastName} {assignment.ballkid.firstName}
         </Link>
         {overallScore != null && scoreColor && (
           <span 
-            className="text-xs font-medium px-1.5 py-0.5 rounded flex-shrink-0"
+            className="font-medium px-1 py-px rounded text-[10px] leading-tight flex-shrink-0"
             style={{ backgroundColor: scoreColor.bg, color: scoreColor.text }}
           >
             {overallScore.toFixed(1)}
@@ -437,9 +426,9 @@ export default function TeamsPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="flex gap-4">
-          {/* Grille des équipes */}
-          <div className="flex-1 grid gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="space-y-3">
+          {/* Liste des équipes - une par ligne */}
+          <div className="space-y-1">
             {teams.map((team: any, teamIndex: number) => {
               const teamMembers = team.assignments?.filter((a: any) => !a.isReserve) || []
               const scoresSum = teamMembers.reduce((sum: number, a: any) => {
@@ -450,159 +439,97 @@ export default function TeamsPage() {
               const teamColor = teamAverage != null ? getTeamAverageColor(teamAverage) : null
 
               return (
-                <Card
+                <div
                   key={team.id}
-                  className={`overflow-hidden ${reserveDropTeamId === team.id ? 'ring-2 ring-purple-300' : ''}`}
+                  className={`flex items-center gap-2 px-2 py-1 rounded-md border bg-white ${
+                    reserveDropTeamId === team.id ? 'ring-2 ring-purple-300' : 'border-gray-200'
+                  }`}
+                  onDragOver={(e) => handleTeamDragOver(e, team.id)}
+                  onDragLeave={handleTeamDragLeave}
+                  onDrop={() => handleTeamDrop(team.id, teamMembers.length + 1)}
                 >
-                  <CardHeader className="py-2 px-3">
-                    <CardTitle className="text-sm flex items-center justify-between">
-                      <span className="flex items-center gap-2">
-                        <span className="w-6 h-6 rounded-full bg-primary text-white flex items-center justify-center font-bold text-xs">
-                          {teamIndex + 1}
-                        </span>
-                        Équipe {teamIndex + 1}
-                      </span>
-                      <div className="flex items-center gap-1">
-                        {teamAverage != null && teamColor && (
-                          <span 
-                            className="text-xs font-medium px-1.5 py-0.5 rounded"
-                            style={{ backgroundColor: teamColor.bg, color: teamColor.text }}
-                          >
-                            {teamAverage.toFixed(1)}
-                          </span>
-                        )}
-                      </div>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="px-2 pb-2">
-                    <div className="space-y-1">
-                      {teamMembers
-                        .sort((a: any, b: any) => (a.position || 0) - (b.position || 0))
-                        .map((assignment: any) => renderBallkidItem(assignment, team.id, false, true))}
-                      {teamMembers.length === 0 && (
-                        <p className="text-xs text-muted-foreground text-center py-4">
-                          Aucun membre
-                        </p>
-                      )}
-                    </div>
-                    {isAdmin && (
-                      <div 
-                        className="mt-2"
-                        onDragOver={(e) => handleTeamDragOver(e, team.id)}
-                        onDragLeave={handleTeamDragLeave}
-                        onDrop={() => handleTeamDrop(team.id, teamMembers.length + 1)}
-                      >
-                        <button
-                          type="button"
-                          className={`flex items-center justify-center w-full h-10 rounded-md border border-dashed text-sm transition-colors cursor-pointer ${
-                            reserveDropTeamId === team.id
-                              ? 'border-purple-400 text-purple-600 bg-purple-50'
-                              : 'border-purple-200 text-purple-400 hover:border-purple-400 hover:text-purple-600 hover:bg-purple-50'
-                          }`}
-                          onClick={() => setAddReserveModal({ teamId: team.id, teamNumber: team.number, position: teamMembers.length + 1 })}
-                        >
-                          + Ajouter
-                        </button>
-                      </div>
+                  {/* Numéro d'équipe */}
+                  <span className="w-5 h-5 rounded-full bg-primary text-white flex items-center justify-center font-bold text-[10px] flex-shrink-0">
+                    {teamIndex + 1}
+                  </span>
+                  {/* Moyenne */}
+                  {teamAverage != null && teamColor && (
+                    <span 
+                      className="text-[10px] font-bold px-1.5 py-0.5 rounded flex-shrink-0 min-w-[32px] text-center"
+                      style={{ backgroundColor: teamColor.bg, color: teamColor.text }}
+                    >
+                      {teamAverage.toFixed(1)}
+                    </span>
+                  )}
+                  {/* Séparateur */}
+                  <div className="w-px h-4 bg-gray-300 flex-shrink-0" />
+                  {/* Membres en ligne */}
+                  <div className="flex items-center gap-1 flex-wrap flex-1 min-w-0">
+                    {teamMembers
+                      .sort((a: any, b: any) => (a.position || 0) - (b.position || 0))
+                      .map((assignment: any) => renderBallkidItem(assignment, team.id, false, true))}
+                    {teamMembers.length === 0 && (
+                      <span className="text-xs text-muted-foreground">Aucun membre</span>
                     )}
-                  </CardContent>
-                </Card>
+                  </div>
+                  {/* Bouton ajouter */}
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      className="text-[10px] text-purple-400 hover:text-purple-600 flex-shrink-0 px-1"
+                      onClick={() => setAddReserveModal({ teamId: team.id, teamNumber: team.number, position: teamMembers.length + 1 })}
+                    >
+                      +
+                    </button>
+                  )}
+                </div>
               )
             })}
           </div>
 
-          {/* Sidebar Remplaçants */}
-          <div className="w-72 flex-shrink-0">
-            <div className="sticky top-4 space-y-3">
-              {/* Carte Remplaçants */}
-              {allReserves.length > 0 && (
-                <Card className="border-purple-200">
-                  <CardHeader className="py-2 px-3">
-                    <CardTitle className="text-sm flex items-center gap-2">
-                      <span className="w-6 h-6 rounded-full bg-purple-500 text-white flex items-center justify-center font-bold text-xs">
-                        R
-                      </span>
-                      Remplaçants
-                      <span className="text-xs font-normal text-muted-foreground ml-auto">
-                        {allReserves.length}
-                      </span>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="px-2 pb-2">
-                    <div className="space-y-1 max-h-[70vh] overflow-y-auto pr-1">
-                      {allReserves.map((assignment: any) => 
-                        renderBallkidItem(assignment, assignment.teamId, true, true)
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
+          {/* Remplaçants & échanges en ligne */}
+          <div className="flex gap-3 flex-wrap">
+            {/* Remplaçants */}
+            {allReserves.length > 0 && (
+              <div className="flex items-center gap-1 px-2 py-1 rounded-md border border-purple-200 bg-purple-50/50 flex-wrap">
+                <span className="inline-flex items-center gap-1 text-xs font-semibold text-purple-700 flex-shrink-0 mr-1">
+                  <span className="w-4 h-4 rounded-full bg-purple-500 text-white flex items-center justify-center font-bold text-[9px]">
+                    R
+                  </span>
+                  Remplaçants ({allReserves.length})
+                </span>
+                {allReserves.map((assignment: any) => 
+                  renderBallkidItem(assignment, assignment.teamId, true, true)
+                )}
+              </div>
+            )}
 
-              {/* Carte des échanges en attente */}
-              {pendingSwaps.length > 0 && (
-                <Card className="border-blue-300 bg-blue-50/50">
-                  <CardHeader className="py-2 px-3">
-                    <CardTitle className="text-sm flex items-center gap-2">
-                      <ArrowLeftRight className="w-4 h-4 text-blue-600" />
-                      Échanges en attente
-                      <span className="text-xs font-normal bg-blue-200 text-blue-700 px-1.5 py-0.5 rounded-full ml-auto">
-                        {pendingSwaps.length}
-                      </span>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="px-2 pb-2">
-                    <div className="space-y-2 max-h-48 overflow-y-auto">
-                      {pendingSwaps.map((swap) => (
-                        <div 
-                          key={swap.id} 
-                          className="flex items-center gap-2 p-2 bg-white rounded border text-xs"
-                        >
-                          <div className="flex-1 min-w-0">
-                            <div className="truncate font-medium">{swap.ballkid1.name}</div>
-                            <div className="text-muted-foreground flex items-center gap-1">
-                              <span>↔</span>
-                              <span className="truncate">{swap.ballkid2.name}</span>
-                            </div>
-                          </div>
-                          <button
-                            onClick={() => removeSwap(swap.id)}
-                            className="p-1 hover:bg-red-100 rounded text-red-500"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="flex gap-2 mt-3">
-                      <Button 
-                        size="sm" 
-                        className="flex-1"
-                        onClick={applyAllSwaps}
-                        disabled={isApplying}
-                      >
-                        <Check className="w-3 h-3 mr-1" />
-                        Appliquer ({pendingSwaps.length})
-                      </Button>
-                      <Button 
-                        size="sm" 
-                        variant="outline"
-                        onClick={clearAllSwaps}
-                        disabled={isApplying}
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Instructions */}
-              {allReserves.length > 0 && pendingSwaps.length === 0 && (
-                <p className="text-xs text-muted-foreground text-center px-2">
-                  Glissez-déposez pour échanger des ramasseurs entre équipes
-                </p>
-              )}
-            </div>
+            {/* Échanges en attente */}
+            {pendingSwaps.length > 0 && (
+              <div className="flex items-center gap-2 px-2 py-1 rounded-md border border-blue-300 bg-blue-50/50 flex-wrap">
+                <span className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 flex-shrink-0">
+                  <ArrowLeftRight className="w-3 h-3" />
+                  Échanges ({pendingSwaps.length})
+                </span>
+                {pendingSwaps.map((swap) => (
+                  <span key={swap.id} className="inline-flex items-center gap-1 text-[10px] bg-white border rounded px-1 py-0.5">
+                    <span className="font-medium">{swap.ballkid1.name}</span>
+                    <span className="text-muted-foreground">↔</span>
+                    <span className="font-medium">{swap.ballkid2.name}</span>
+                    <button onClick={() => removeSwap(swap.id)} className="text-red-400 hover:text-red-600">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+                <Button size="sm" className="h-5 text-[10px] px-2" onClick={applyAllSwaps} disabled={isApplying}>
+                  <Check className="w-3 h-3 mr-0.5" />
+                  Appliquer
+                </Button>
+                <Button size="sm" variant="outline" className="h-5 text-[10px] px-1" onClick={clearAllSwaps} disabled={isApplying}>
+                  <Trash2 className="w-3 h-3" />
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       )}

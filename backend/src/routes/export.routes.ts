@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import PDFDocument from 'pdfkit';
+import path from 'path';
+import fs from 'fs';
 import prisma from '../lib/prisma.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
@@ -292,56 +294,236 @@ router.get('/coaches/csv', authenticate, async (req: AuthRequest, res, next) => 
   }
 });
 
-// GET /api/export/teams/pdf - Export PDF des équipes
+// GET /api/export/teams/pdf - Export PDF des équipes par terrain et par jour
 router.get('/teams/pdf', authenticate, async (req: AuthRequest, res, next) => {
   try {
-    const { tournamentId } = req.query;
+    const { tournamentId, dayNumber } = req.query;
 
     if (!tournamentId) {
       throw new AppError('tournamentId requis', 400);
     }
 
-    const tournament = await prisma.tournament.findUnique({
-      where: { id: tournamentId as string },
-    });
+    // Récupérer les jours à exporter
+    const dayFilter: any = { tournamentId: tournamentId as string };
+    if (dayNumber) {
+      dayFilter.dayNumber = parseInt(dayNumber as string);
+    }
 
-    const teams = await prisma.team.findMany({
-      where: { tournamentId: tournamentId as string },
-      orderBy: { order: 'asc' },
+    const days = await prisma.tournamentDay.findMany({
+      where: dayFilter,
+      orderBy: { dayNumber: 'asc' },
       include: {
-        assignments: {
-          where: { tournamentDayId: null, isReserve: false },
-          include: { ballkid: true },
-          orderBy: { position: 'asc' },
+        tournament: true,
+        courts: {
+          orderBy: { order: 'asc' },
+          include: {
+            coachAssignments: {
+              include: { coach: { include: { user: true } } },
+            },
+            courtTeams: {
+              include: {
+                team: {
+                  include: {
+                    assignments: {
+                      where: { isReserve: false },
+                      include: { ballkid: true },
+                      orderBy: { position: 'asc' },
+                    },
+                  },
+                },
+              },
+              orderBy: { order: 'asc' },
+            },
+          },
         },
       },
     });
 
+    if (days.length === 0) {
+      throw new AppError('Aucun jour trouvé', 404);
+    }
+
     const doc = new PDFDocument({ margin: 30, size: 'A4', layout: 'landscape' });
 
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', 'attachment; filename=equipes.pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=equipes${dayNumber ? `-jour-${dayNumber}` : ''}.pdf`);
     doc.pipe(res);
 
-    // Titre
-    doc.fontSize(20).text(`Équipes - ${tournament?.name || 'Tournoi'}`, { align: 'center' });
-    doc.moveDown();
+    let isFirstPage = true;
 
-    // Équipes
-    teams.forEach((team, index) => {
-      if (index > 0 && index % 4 === 0) {
-        doc.addPage();
-      }
-
-      doc.fontSize(14).fillColor('#2563eb').text(team.name);
-      doc.fontSize(10).fillColor('#000');
-
-      team.assignments.forEach((a, i) => {
-        doc.text(`  ${i + 1}. ${a.ballkid.lastName} ${a.ballkid.firstName}`);
+    for (const day of days) {
+      const dateLabel = day.date.toLocaleDateString('fr-FR', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
       });
 
-      doc.moveDown(0.5);
-    });
+      for (const court of day.courts) {
+        if (!isFirstPage) {
+          doc.addPage();
+        }
+        isFirstPage = false;
+
+        // Coaches de ce terrain
+        const coaches = court.coachAssignments.map((ca) => {
+          const user = ca.coach.user;
+          return `${user.firstName} ${user.lastName}`;
+        });
+        const coachLabel = coaches.length > 0 ? coaches.join(', ') : 'Non assigné';
+
+        // === En-tête de page ===
+        const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+        let courtPageNum = 1;
+        const headerText = `${court.name}, Jour ${day.dayNumber} — ${dateLabel}, Coach : ${coachLabel}`;
+
+        // Pré-calculer si le court tient sur une seule page
+        const availableHeight = doc.page.height - doc.page.margins.top - doc.page.margins.bottom - 30; // header ~30
+        const teams = court.courtTeams.map(ct => ct.team);
+        // Estimation conservatrice : pour chaque équipe, calculer la hauteur avec un nombre réaliste de membres (6 typ.)
+        let estimatedHeight = 0;
+        for (const t of teams) {
+          // Prendre au max 6-8 membres par équipe (après dédup par jour, c'est le cas typique)
+          const rawCount = t.assignments.length;
+          const cnt = Math.max(1, Math.min(rawCount, 8)); // Borne réaliste
+          const cols = Math.min(cnt, Math.max(6, cnt));
+          const cw = Math.floor(pageWidth / cols);
+          const pw = Math.min(cw - 8, 120);
+          const ph = Math.round(pw * 4 / 3);
+          const rows = Math.ceil(cnt / cols);
+          estimatedHeight += 18 + (ph + 24 + 4) * rows + 6;
+        }
+        const isMultiPage = estimatedHeight > availableHeight;
+
+        const writeHeader = () => {
+          const label = isMultiPage ? `${headerText} (page ${courtPageNum})` : headerText;
+          doc.fontSize(13).fillColor('#1e40af').text(label, { align: 'center' });
+          doc.moveDown(0.25);
+          const sepY = doc.y;
+          doc.moveTo(doc.page.margins.left, sepY).lineTo(doc.page.margins.left + pageWidth, sepY).strokeColor('#d1d5db').lineWidth(1).stroke();
+          doc.moveDown(0.2);
+        };
+
+        writeHeader();
+
+        // === Équipes et ramasseurs ===
+
+        if (teams.length === 0) {
+          doc.fontSize(12).fillColor('#6b7280').text('Aucune équipe assignée à ce terrain', { align: 'center' });
+          continue;
+        }
+
+        for (const team of teams) {
+          // Filtrer les assignments pour ce jour, dédupliquer par ballkidId
+          const dayAssignments = team.assignments.filter(
+            (a) => a.tournamentDayId === day.id
+          );
+          const baseAssignments = team.assignments.filter(
+            (a) => a.tournamentDayId === null
+          );
+          const source = dayAssignments.length > 0 ? dayAssignments : baseAssignments;
+          const seen = new Set<string>();
+          const assignments = source.filter((a) => {
+            if (seen.has(a.ballkidId)) return false;
+            seen.add(a.ballkidId);
+            return true;
+          });
+
+          // Calcul du layout : tous sur une ligne si possible
+          const count = assignments.length;
+          const colCount = Math.min(count || 1, Math.max(6, count)); // Tous sur une ligne
+          const cellWidth = Math.floor(pageWidth / colCount);
+          const photoWidth = Math.min(cellWidth - 8, 120);
+          const photoHeight = Math.round(photoWidth * 4 / 3); // Format portrait 3:4
+          const nameHeight = 24;
+          const cellHeight = photoHeight + nameHeight;
+          const teamHeaderHeight = 18;
+          const blockHeight = teamHeaderHeight + cellHeight;
+
+          // Vérifier s'il reste assez de place
+          if (doc.y + blockHeight > doc.page.height - doc.page.margins.bottom - 5) {
+            doc.addPage();
+            courtPageNum++;
+            writeHeader();
+          }
+
+          // Titre équipe
+          doc.fontSize(13).fillColor('#1e40af').text(team.name);
+          doc.moveDown(0.15);
+
+          if (assignments.length === 0) {
+            doc.fontSize(9).fillColor('#9ca3af').text('  Aucun ramasseur assigné');
+            doc.moveDown(0.3);
+            continue;
+          }
+
+          let rowY = doc.y;
+
+          for (let i = 0; i < assignments.length; i++) {
+            const colIndex = i % colCount;
+
+            // Nouvelle ligne si dépassement
+            if (colIndex === 0 && i > 0) {
+              rowY += cellHeight + 4;
+            }
+
+            if (colIndex === 0 && rowY + cellHeight > doc.page.height - doc.page.margins.bottom - 5) {
+              doc.addPage();
+              courtPageNum++;
+              writeHeader();
+              rowY = doc.y;
+            }
+
+            const a = assignments[i];
+            const x = doc.page.margins.left + colIndex * cellWidth;
+            const photoX = x + (cellWidth - photoWidth) / 2;
+
+            // Photo (format portrait)
+            let photoDrawn = false;
+            if (a.ballkid.photoUrl) {
+              const photoPath = path.join(process.cwd(), a.ballkid.photoUrl);
+              if (fs.existsSync(photoPath)) {
+                try {
+                  doc.image(photoPath, photoX, rowY, {
+                    fit: [photoWidth, photoHeight],
+                    align: 'center',
+                    valign: 'center',
+                  });
+                  photoDrawn = true;
+                } catch {
+                  // image invalide
+                }
+              }
+            }
+
+            if (!photoDrawn) {
+              doc.save();
+              doc.roundedRect(photoX, rowY, photoWidth, photoHeight, 4).fillColor('#e5e7eb').fill();
+              doc.fontSize(16).fillColor('#9ca3af').text('?', photoX, rowY + photoHeight / 2 - 8, { width: photoWidth, align: 'center' });
+              doc.restore();
+            }
+
+            // Nom sous la photo
+            const fontSize = count > 6 ? 8 : count > 4 ? 9 : 10;
+            const textGap = 5;
+            doc.fontSize(fontSize).fillColor('#111827').text(
+              `${a.ballkid.firstName}`,
+              x, rowY + photoHeight + textGap,
+              { width: cellWidth, align: 'center' }
+            );
+            doc.fontSize(fontSize).fillColor('#111827').text(
+              `${a.ballkid.lastName}`,
+              x, rowY + photoHeight + textGap + fontSize + 1,
+              { width: cellWidth, align: 'center' }
+            );
+          }
+
+          // Avancer Y après le dernier rang de cette équipe
+          doc.y = rowY + cellHeight + 6;
+          doc.x = doc.page.margins.left;
+        }
+      }
+    }
 
     doc.end();
   } catch (error) {

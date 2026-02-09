@@ -216,7 +216,7 @@ export default function TrainingScorePage() {
         <CardContent className="flex items-center gap-4 py-4">
           {ballkid.photoUrl ? (
             <img
-              src={`/api${ballkid.photoUrl}`}
+              src={ballkid.photoUrl}
               alt=""
               className="w-16 h-16 rounded-full object-cover"
             />

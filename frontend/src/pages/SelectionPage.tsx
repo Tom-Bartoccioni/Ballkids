@@ -566,7 +566,7 @@ export default function SelectionPage() {
                             <div className="flex items-center gap-3">
                               {ballkid.photoUrl ? (
                                 <img
-                                  src={`${import.meta.env.VITE_API_URL?.replace('/api', '')}${ballkid.photoUrl}`}
+                                  src={ballkid.photoUrl}
                                   alt=""
                                   className="w-10 h-10 rounded-full object-cover"
                                 />

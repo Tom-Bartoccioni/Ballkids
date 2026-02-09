@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '@/lib/api'
@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToast } from '@/hooks/use-toast'
 import { 
   ArrowLeft, Mail, Phone, MapPin, Shirt, Trash2, Pencil, User, 
-  Star, Calendar, Award, Users, Check, X, Save
+  Star, Calendar, Award, Users, Check, X, Save, Camera
 } from 'lucide-react'
 
 const statusLabels: Record<string, { label: string; color: string }> = {
@@ -27,6 +27,8 @@ export default function BallkidDetailPage() {
   const { isAdmin, user } = useAuth()
   const { toast } = useToast()
   const queryClient = useQueryClient()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const [selectionInput, setSelectionInput] = useState('')
   const [editingSelectionScores, setEditingSelectionScores] = useState<Record<string, string>>({})
   const [editingTrainingScores, setEditingTrainingScores] = useState<Record<string, string>>({})
@@ -94,6 +96,27 @@ export default function BallkidDetailPage() {
       toast({ variant: 'destructive', title: 'Erreur lors de la validation' })
     },
   })
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setUploadingPhoto(true)
+    try {
+      const formData = new FormData()
+      formData.append('photo', file)
+      await api.post(`/ballkids/${id}/photo`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      toast({ title: 'Photo mise à jour' })
+      queryClient.invalidateQueries({ queryKey: ['ballkid', id] })
+    } catch {
+      toast({ variant: 'destructive', title: 'Erreur lors de l\'upload de la photo' })
+    } finally {
+      setUploadingPhoto(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
 
   const rejectMutation = useMutation({
     mutationFn: () => api.post(`/ballkids/${id}/reject`),
@@ -407,18 +430,40 @@ export default function BallkidDetailPage() {
         
         <div className="flex-1 flex gap-6">
           {/* Photo */}
-          <div className="flex-shrink-0">
-            {ballkid.photoUrl ? (
-              <img 
-                src={`/api${ballkid.photoUrl}`} 
-                alt={`${ballkid.firstName} ${ballkid.lastName}`}
-                className="w-24 h-24 rounded-xl object-cover shadow-md"
-              />
-            ) : (
-              <div className="w-24 h-24 rounded-xl bg-gray-200 flex items-center justify-center shadow-md">
-                <User className="w-10 h-10 text-gray-400" />
+          <div className="flex-shrink-0 relative group">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="hidden"
+              onChange={handlePhotoUpload}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadingPhoto}
+              className="relative cursor-pointer rounded-xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+              title="Cliquer pour changer la photo"
+            >
+              {ballkid.photoUrl ? (
+                <img 
+                  src={ballkid.photoUrl} 
+                  alt={`${ballkid.firstName} ${ballkid.lastName}`}
+                  className="w-24 h-24 rounded-xl object-cover shadow-md"
+                />
+              ) : (
+                <div className="w-24 h-24 rounded-xl bg-gray-200 flex items-center justify-center shadow-md">
+                  <User className="w-10 h-10 text-gray-400" />
+                </div>
+              )}
+              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors rounded-xl flex items-center justify-center">
+                <Camera className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
               </div>
-            )}
+              {uploadingPhoto && (
+                <div className="absolute inset-0 bg-black/50 rounded-xl flex items-center justify-center">
+                  <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                </div>
+              )}
+            </button>
           </div>
 
           {/* Nom et infos principales */}

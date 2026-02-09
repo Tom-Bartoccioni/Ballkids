@@ -685,7 +685,7 @@ export default function SchedulePage() {
     if (!tournament?.id) return
     try {
       const res = await api.get(endpoint, {
-        params: { tournamentId: tournament.id },
+        params: { tournamentId: tournament.id, dayNumber: selectedDay },
         responseType: 'blob',
       })
       const blob = new Blob([res.data], { type: mimeType })
@@ -711,7 +711,7 @@ export default function SchedulePage() {
   }
 
   const handleExportTeamsPDF = () => {
-    downloadTeamsFile('/export/teams/pdf', 'equipes.pdf', 'application/pdf')
+    downloadTeamsFile('/export/teams/pdf', `equipes-jour-${selectedDay}.pdf`, 'application/pdf')
   }
 
   const balanceTeamsMutation = useMutation({
@@ -1759,7 +1759,7 @@ export default function SchedulePage() {
                                   >
                                   {ballkid.photoUrl ? (
                                     <img
-                                      src={`/api${ballkid.photoUrl}`}
+                                      src={ballkid.photoUrl}
                                       alt={`${ballkid.firstName} ${ballkid.lastName}`}
                                       className="w-7 h-7 rounded-full object-cover flex-shrink-0"
                                     />
@@ -2015,7 +2015,7 @@ export default function SchedulePage() {
                               >
                                 {ballkid.photoUrl ? (
                                   <img
-                                    src={`/api${ballkid.photoUrl}`}
+                                    src={ballkid.photoUrl}
                                     alt={`${ballkid.firstName} ${ballkid.lastName}`}
                                     className="w-7 h-7 rounded-full object-cover flex-shrink-0"
                                   />
@@ -2438,7 +2438,7 @@ export default function SchedulePage() {
                                 >
                                   {a.ballkid.photoUrl ? (
                                     <img 
-                                      src={`/api${a.ballkid.photoUrl}`}
+                                      src={a.ballkid.photoUrl}
                                       alt=""
                                       className="w-5 h-5 rounded-full object-cover"
                                     />
@@ -2742,7 +2742,7 @@ export default function SchedulePage() {
                         >
                           {ballkid.photoUrl ? (
                             <img
-                              src={`/api${ballkid.photoUrl}`}
+                              src={ballkid.photoUrl}
                               alt=""
                               className="w-8 h-8 rounded-full object-cover"
                             />
@@ -2791,7 +2791,7 @@ export default function SchedulePage() {
                         >
                           {ballkid?.photoUrl ? (
                             <img
-                              src={`/api${ballkid.photoUrl}`}
+                              src={ballkid.photoUrl}
                               alt=""
                               className="w-8 h-8 rounded-full object-cover"
                             />

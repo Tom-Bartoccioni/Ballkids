@@ -152,6 +152,7 @@ router.get('/:tournamentId/summary/all', authenticate, async (req, res, next) =>
         id: b.id,
         firstName: b.firstName,
         lastName: b.lastName,
+        photoUrl: b.photoUrl,
         status: b.status,
         session1: sessionAverages[1],
         session2: sessionAverages[2],

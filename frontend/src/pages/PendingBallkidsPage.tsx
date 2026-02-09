@@ -183,7 +183,7 @@ export default function PendingBallkidsPage() {
                     <div className="flex-shrink-0">
                       {ballkid.photoUrl ? (
                         <img
-                          src={`${import.meta.env.VITE_API_URL?.replace('/api', '')}${ballkid.photoUrl}`}
+                          src={ballkid.photoUrl}
                           alt={`${ballkid.firstName} ${ballkid.lastName}`}
                           className="w-16 h-16 rounded-full object-cover"
                         />
