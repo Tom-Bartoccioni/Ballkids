@@ -250,10 +250,32 @@ export default function SchedulePage() {
   const hasDayAssignments = (currentDay?.teamAssignments?.length || 0) > 0
   const hasCourts = (currentDay?.courts?.length || 0) > 0
 
-  // Always show all teams in "Équipes du jour", regardless of court assignment
+  // For coaches: find their coachId and filter courts/teams to only their assignments
+  const coachId = user?.coachProfile?.id
+
+  const coachCourts = useMemo(() => {
+    if (isAdmin || !coachId || !currentDay?.courts) return currentDay?.courts || []
+    return currentDay.courts.filter((court: any) =>
+      (court.coachAssignments || []).some((ca: any) => ca.coach?.id === coachId)
+    )
+  }, [isAdmin, coachId, currentDay?.courts])
+
+  const coachTeamIds = useMemo(() => {
+    if (isAdmin || !coachId) return null // null means no filtering
+    const ids = new Set<string>()
+    coachCourts.forEach((court: any) => {
+      (court.courtTeams || []).forEach((ct: any) => {
+        if (ct.teamId) ids.add(ct.teamId)
+      })
+    })
+    return ids
+  }, [isAdmin, coachId, coachCourts])
+
+  // Show all teams for admins, only coach's teams for coaches
   const dayTeamsSource = useMemo(() => {
-    return allTeams
-  }, [allTeams])
+    if (!coachTeamIds) return allTeams
+    return allTeams.filter((team: any) => coachTeamIds.has(team.id))
+  }, [allTeams, coachTeamIds])
 
   const dayTeams = useMemo(() => {
     const teamsMap = new Map<string, { team: any; members: any[] }>()
@@ -1402,12 +1424,12 @@ export default function SchedulePage() {
             </div>
             
             <div className="grid gap-4 grid-cols-[repeat(auto-fill,minmax(320px,1fr))]">
-              {currentDay.courts?.map((court: any) => {
+              {coachCourts.map((court: any) => {
                 const coachAssignments = court.coachAssignments || []
                 const coaches = coachAssignments.map((ca: any) => ca.coach?.user).filter(Boolean)
-                const coachIds = coachAssignments.map((ca: any) => ca.coach?.id).filter(Boolean)
-                const hasCoachAlert = coachIds.some((coachId: string) =>
-                  currentDay?.dayNumber && coachAlertDays.get(coachId)?.has(currentDay.dayNumber)
+                const courtCoachIds = coachAssignments.map((ca: any) => ca.coach?.id).filter(Boolean)
+                const hasCoachAlert = courtCoachIds.some((cId: string) =>
+                  currentDay?.dayNumber && coachAlertDays.get(cId)?.has(currentDay.dayNumber)
                 )
                 return (
                   <Card key={court.id} className="group relative flex flex-col">
@@ -1445,7 +1467,7 @@ export default function SchedulePage() {
                             <button
                               onClick={() => {
                                 setAssigningCoachCourt(court)
-                                setSelectedCoachIds(coachIds)
+                                setSelectedCoachIds(courtCoachIds)
                               }}
                               className="flex items-center gap-2 font-medium hover:text-blue-600 transition-colors"
                             >
@@ -1583,10 +1605,10 @@ export default function SchedulePage() {
                 )
               })}
 
-              {(!currentDay.courts || currentDay.courts.length === 0) && (
+              {coachCourts.length === 0 && (
                 <Card className="col-span-full">
                   <CardContent className="py-8 text-center text-muted-foreground">
-                    <p>Aucun terrain configuré pour ce jour</p>
+                    <p>{!isAdmin && coachId ? 'Vous n\'êtes assigné à aucun terrain ce jour' : 'Aucun terrain configuré pour ce jour'}</p>
                     {isAdmin && (
                       <Button variant="outline" size="sm" className="mt-3" onClick={handleAddCourt}>
                         <Plus className="w-4 h-4 mr-1" />
@@ -1660,9 +1682,7 @@ export default function SchedulePage() {
               )}
               {dayTeams.length ? (
                 <div
-                  className={`grid gap-3 md:grid-cols-2 lg:grid-cols-3 ${
-                    showReservesDrawer ? 'xl:grid-cols-4' : 'xl:grid-cols-5'
-                  }`}
+                  className={`grid gap-3 md:grid-cols-2 lg:grid-cols-3 ${showReservesDrawer ? 'xl:grid-cols-4' : 'xl:grid-cols-5'}`}
                 >
                   {dayTeamsView.map(({ team, members }) => (
                     (() => {
@@ -1695,7 +1715,105 @@ export default function SchedulePage() {
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="px-2 pb-2">
-                        <div className="space-y-1">
+                        {/* === MOBILE CARD VIEW === */}
+                          <div className="grid grid-cols-2 gap-3 md:hidden">
+                            {members
+                              .sort((a: any, b: any) => (a.position || 0) - (b.position || 0))
+                              .map((assignment: any) => {
+                                const ballkid = assignment.ballkid
+                                if (!ballkid) return null
+                                const scores = currentDay.tournamentScores?.filter(
+                                  (s: any) => s.ballkidId === ballkid.id
+                                ) || []
+                                const currentUserScore = scores.find((s: any) => s.scorerId === user?.id)
+                                const avgScore = ballkid.overallAverage ?? ballkid.averageTrainingScore ?? null
+                                const isEditing = editingTournamentScores[ballkid.id]
+
+                                return (
+                                  <div key={ballkid.id} className="rounded-xl border bg-white p-3 flex flex-col items-center text-center gap-2">
+                                    <Link to={`/ballkids/${ballkid.id}?from=schedule&day=${selectedDay}`} className="flex flex-col items-center gap-2">
+                                      {ballkid.photoUrl ? (
+                                        <img
+                                          src={ballkid.photoUrl}
+                                          alt={`${ballkid.firstName} ${ballkid.lastName}`}
+                                          className="w-20 h-20 rounded-full object-cover border-2 border-gray-100"
+                                        />
+                                      ) : (
+                                        <div className="w-20 h-20 rounded-full bg-gray-100 flex items-center justify-center border-2 border-gray-200">
+                                          <User className="w-8 h-8 text-gray-400" />
+                                        </div>
+                                      )}
+                                      <span className={`text-sm font-semibold leading-tight ${absentBallkidIds.has(ballkid.id) ? 'text-red-600' : ''}`}>
+                                        {ballkid.lastName} {ballkid.firstName}
+                                      </span>
+                                    </Link>
+                                    {avgScore != null && (() => {
+                                      const scoreColor = getScoreColor(avgScore, minOverallScore, maxOverallScore)
+                                      return (
+                                        <span
+                                          className="text-xs font-bold px-2.5 py-1 rounded-full"
+                                          style={{ backgroundColor: scoreColor.bg, color: scoreColor.text }}
+                                        >
+                                          {avgScore.toFixed(1)}
+                                        </span>
+                                      )
+                                    })()}
+                                    {(!currentUserScore || isEditing) ? (
+                                      <div className="w-full">
+                                        <Input
+                                          type="text"
+                                          inputMode="decimal"
+                                          placeholder="Ajouter une note..."
+                                          value={tournamentScores[ballkid.id] || ''}
+                                          onChange={(e) =>
+                                            setTournamentScores((prev) => ({
+                                              ...prev,
+                                              [ballkid.id]: e.target.value,
+                                            }))
+                                          }
+                                          onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                              e.preventDefault()
+                                              handleTournamentScoreSubmit(ballkid.id)
+                                            }
+                                          }}
+                                          onBlur={() => {
+                                            if (tournamentScores[ballkid.id]) {
+                                              handleTournamentScoreSubmit(ballkid.id)
+                                            }
+                                          }}
+                                          className="h-8 text-center text-sm"
+                                        />
+                                      </div>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setEditingTournamentScores((prev) => ({
+                                            ...prev,
+                                            [ballkid.id]: true,
+                                          }))
+                                          setTournamentScores((prev) => ({
+                                            ...prev,
+                                            [ballkid.id]: currentUserScore.totalScore?.toFixed(1) || '',
+                                          }))
+                                        }}
+                                        className="w-full h-8 rounded-md border border-input bg-white px-3 text-sm text-blue-600 font-semibold hover:bg-blue-50 transition-colors"
+                                      >
+                                        {currentUserScore.totalScore?.toFixed(1)} <Pencil className="w-3 h-3 inline ml-1" />
+                                      </button>
+                                    )}
+                                  </div>
+                                )
+                              })}
+                            {members.length === 0 && (
+                              <p className="text-xs text-muted-foreground text-center py-4 col-span-2">
+                                Aucun membre
+                              </p>
+                            )}
+                          </div>
+                        {/* === DESKTOP COMPACT VIEW === */}
+                        <div className="hidden md:block space-y-1">
                           {members
                             .sort((a: any, b: any) => (a.position || 0) - (b.position || 0))
                             .map((assignment: any) => {
@@ -1706,7 +1824,7 @@ export default function SchedulePage() {
                               ) || []
                               const currentUserScore = scores.find((s: any) => s.scorerId === user?.id)
                               const avgScore = ballkid.overallAverage ?? ballkid.averageTrainingScore ?? null
-                              const canEdit = isAdmin
+                              const canEdit = true
                               const isEditing = editingTournamentScores[ballkid.id]
 
                               return (
@@ -1963,7 +2081,7 @@ export default function SchedulePage() {
                             ) || []
                             const currentUserScore = scores.find((s: any) => s.scorerId === user?.id)
                             const avgScore = ballkid.overallAverage ?? ballkid.averageTrainingScore ?? null
-                            const canEdit = isAdmin
+                            const canEdit = true
                             const isEditing = editingTournamentScores[ballkid.id]
 
                             return (

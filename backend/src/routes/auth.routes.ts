@@ -60,6 +60,7 @@ router.post(
             firstName: user.firstName,
             lastName: user.lastName,
             role: user.role,
+            coachProfile: user.coachProfile || null,
           },
         },
       });

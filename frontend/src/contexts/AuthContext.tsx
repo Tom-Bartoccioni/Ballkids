@@ -1,12 +1,19 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import api from '@/lib/api'
 
+interface CoachProfile {
+  id: string
+  userId: string
+  tournamentId: string
+}
+
 interface User {
   id: string
   email: string
   firstName: string
   lastName: string
   role: 'ADMIN' | 'COACH'
+  coachProfile?: CoachProfile | null
 }
 
 interface AuthContextType {

@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/hooks/use-toast'
-import { UsersRound, Wand2, User, GripVertical, ArrowLeftRight, X, Check, Trash2 } from 'lucide-react'
+import { UsersRound, Wand2, User, GripVertical, ArrowLeftRight, X, Check, Trash2, ChevronDown, ChevronUp } from 'lucide-react'
 
 // Fonction pour obtenir une couleur dégradée de rouge à vert basée sur un score (0-20)
 function getScoreColor(score: number, minScore: number, maxScore: number): { bg: string; text: string } {
@@ -67,6 +67,9 @@ export default function TeamsPage() {
   const [generateTeamCount, setGenerateTeamCount] = useState(13)
   const [generateTeamSize, setGenerateTeamSize] = useState(6)
   const [addReserveModal, setAddReserveModal] = useState<{ teamId: string; teamNumber: number; position: number } | null>(null)
+  const [selectedDay, setSelectedDay] = useState(1)
+  const [expandedTeamId, setExpandedTeamId] = useState<string | null>(null)
+  const [mobileScores, setMobileScores] = useState<Record<string, string>>({})
 
   const { data: tournament } = useQuery({
     queryKey: ['tournament', 'active'],
@@ -85,6 +88,43 @@ export default function TeamsPage() {
     },
     enabled: !!tournament?.id,
   })
+
+  // Fetch tournament days for day selector
+  const { data: scheduleData } = useQuery({
+    queryKey: ['schedule', tournament?.id],
+    queryFn: async () => {
+      if (!tournament?.id) return null
+      const res = await api.get(`/schedule/${tournament.id}`)
+      return res.data.data
+    },
+    enabled: !!tournament?.id,
+  })
+
+  const days = scheduleData?.days || []
+
+  // Score mutation for mobile view
+  const scoreMutation = useMutation({
+    mutationFn: (data: { ballkidId: string; score: number }) =>
+      api.post(`/schedule/${tournament?.id}/day/${selectedDay}/score-simple`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['teams'] })
+    },
+    onError: () => {
+      toast({ variant: 'destructive', title: 'Erreur lors de la notation' })
+    },
+  })
+
+  const handleMobileScore = (ballkidId: string) => {
+    const value = mobileScores[ballkidId]
+    if (value === undefined || value === '') return
+    const score = parseFloat(value)
+    if (isNaN(score) || score < 0 || score > 20) {
+      toast({ variant: 'destructive', title: 'La note doit être entre 0 et 20' })
+      return
+    }
+    scoreMutation.mutate({ ballkidId, score })
+    toast({ title: 'Note enregistrée' })
+  }
 
   const generateMutation = useMutation({
     mutationFn: (data: { teamCount: number; teamSize: number }) =>
@@ -392,16 +432,35 @@ export default function TeamsPage() {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <UsersRound className="w-6 h-6 text-purple-500" />
             Équipes
           </h1>
-          <p className="text-muted-foreground text-sm">
+          <p className="text-muted-foreground text-sm hidden md:block">
             Glissez-déposez pour échanger
           </p>
         </div>
+        {/* Day selector - mobile */}
+        {days.length > 0 && (
+          <div className="flex items-center gap-1 md:hidden">
+            <span className="text-sm font-medium text-muted-foreground">Jour :</span>
+            {days.map((day: any) => (
+              <button
+                key={day.dayNumber}
+                onClick={() => setSelectedDay(day.dayNumber)}
+                className={`w-8 h-8 rounded-full text-sm font-bold transition-colors ${
+                  selectedDay === day.dayNumber
+                    ? 'bg-primary text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                {day.dayNumber}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="flex gap-2 flex-wrap"></div>
       </div>
 
@@ -426,7 +485,87 @@ export default function TeamsPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-3">
+        <>
+          {/* === MOBILE VIEW === */}
+          <div className="md:hidden space-y-3">
+            {teams.map((team: any, teamIndex: number) => {
+              const teamMembers = team.assignments?.filter((a: any) => !a.isReserve) || []
+              const isExpanded = expandedTeamId === team.id
+
+              return (
+                <div key={team.id} className="border rounded-lg bg-white overflow-hidden">
+                  {/* Team header - tappable */}
+                  <button
+                    type="button"
+                    className="w-full flex items-center gap-2 px-3 py-2 bg-gray-50 border-b"
+                    onClick={() => setExpandedTeamId(isExpanded ? null : team.id)}
+                  >
+                    <span className="w-7 h-7 rounded-full bg-primary text-white flex items-center justify-center font-bold text-xs flex-shrink-0">
+                      {teamIndex + 1}
+                    </span>
+                    <span className="font-semibold text-sm flex-1 text-left">Équipe {teamIndex + 1}</span>
+                    <span className="text-xs text-muted-foreground">{teamMembers.length} ramasseurs</span>
+                    {isExpanded ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+                  </button>
+
+                  {/* Expanded: ballkid cards 2 per row */}
+                  {isExpanded && (
+                    <div className="grid grid-cols-2 gap-2 p-2">
+                      {teamMembers
+                        .sort((a: any, b: any) => (a.position || 0) - (b.position || 0))
+                        .map((assignment: any) => {
+                          const bk = assignment.ballkid
+                          const currentScore = mobileScores[bk.id]
+                          return (
+                            <div key={assignment.id} className="flex flex-col items-center border rounded-lg p-2 bg-gray-50">
+                              {/* Photo */}
+                              <Link to={`/ballkids/${bk.id}?from=teams`}>
+                                {bk.photoUrl ? (
+                                  <img
+                                    src={bk.photoUrl}
+                                    alt={`${bk.firstName} ${bk.lastName}`}
+                                    className="w-24 h-32 rounded-lg object-cover"
+                                  />
+                                ) : (
+                                  <div className="w-24 h-32 rounded-lg bg-gray-200 flex items-center justify-center">
+                                    <User className="w-10 h-10 text-gray-400" />
+                                  </div>
+                                )}
+                              </Link>
+                              {/* Name */}
+                              <span className="text-sm font-semibold mt-1 text-center leading-tight">
+                                {bk.firstName}
+                              </span>
+                              <span className="text-xs text-muted-foreground text-center leading-tight">
+                                {bk.lastName}
+                              </span>
+                              {/* Score input */}
+                              <div className="mt-1 w-full flex items-center gap-1">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max="20"
+                                  step="0.5"
+                                  placeholder="Note"
+                                  value={currentScore ?? ''}
+                                  onChange={(e) => setMobileScores(prev => ({ ...prev, [bk.id]: e.target.value }))}
+                                  onBlur={() => handleMobileScore(bk.id)}
+                                  onKeyDown={(e) => { if (e.key === 'Enter') handleMobileScore(bk.id) }}
+                                  className="w-full h-8 text-center text-sm border rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-primary"
+                                />
+                              </div>
+                            </div>
+                          )
+                        })}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+
+          {/* === DESKTOP VIEW === */}
+          <div className="hidden md:block space-y-3">
           {/* Liste des équipes - une par ligne */}
           <div className="space-y-1">
             {teams.map((team: any, teamIndex: number) => {
@@ -532,6 +671,7 @@ export default function TeamsPage() {
             )}
           </div>
         </div>
+        </>
       )}
 
       {/* Modal pour ajouter un remplaçant */}
