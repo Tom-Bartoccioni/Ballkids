@@ -247,7 +247,7 @@ export default function SelectionPage() {
   const allBallkids = ballkidsData?.ballkids || []
   
   // Créer un map des notes existantes
-  const scoreMap = new Map(ranking.map((r: any) => [r.id, r]))
+  const scoreMap = new Map<string, any>(ranking.map((r: any) => [r.id, r]))
 
   // Stats
   const registeredBallkids = allBallkids.filter((b: any) => 

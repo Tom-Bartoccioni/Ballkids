@@ -193,24 +193,38 @@ router.post(
         }
         if (consecutiveCount > 6) {
           throw new AppError(
-            `Attention : ${coach.user} dépasserait 6 jours consécutifs`,
+            `Attention : ce coach dépasserait 6 jours consécutifs`,
             400
           );
         }
       }
 
-      const assignment = await prisma.coachAssignment.upsert({
-        where: {
-          coachId_tournamentDayId: { coachId, tournamentDayId },
-        },
-        update: { courtId },
-        create: { coachId, tournamentDayId, courtId },
-        include: {
-          coach: { include: { user: true } },
-          tournamentDay: true,
-          court: true,
-        },
+      // Find existing assignment for this coach+court combo or create new
+      const existingAssignment = await prisma.coachAssignment.findFirst({
+        where: { coachId, tournamentDayId },
       });
+
+      let assignment;
+      if (existingAssignment) {
+        assignment = await prisma.coachAssignment.update({
+          where: { id: existingAssignment.id },
+          data: { courtId },
+          include: {
+            coach: { include: { user: true } },
+            tournamentDay: true,
+            court: true,
+          },
+        });
+      } else {
+        assignment = await prisma.coachAssignment.create({
+          data: { coachId, tournamentDayId, courtId },
+          include: {
+            coach: { include: { user: true } },
+            tournamentDay: true,
+            court: true,
+          },
+        });
+      }
 
       res.json({ success: true, data: { assignment } });
     } catch (error) {
@@ -228,10 +242,16 @@ router.delete(
     try {
       const { coachId, tournamentDayId } = req.body;
 
+      const toDelete = await prisma.coachAssignment.findFirst({
+        where: { coachId, tournamentDayId },
+      });
+
+      if (!toDelete) {
+        throw new AppError('Affectation non trouvée', 404);
+      }
+
       await prisma.coachAssignment.delete({
-        where: {
-          coachId_tournamentDayId: { coachId, tournamentDayId },
-        },
+        where: { id: toDelete.id },
       });
 
       res.json({ success: true, message: 'Affectation supprimée' });

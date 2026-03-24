@@ -78,7 +78,7 @@ router.post(
     body('startDate').isISO8601().withMessage('Date de début invalide'),
     body('endDate').isISO8601().withMessage('Date de fin invalide'),
   ],
-  async (req: AuthRequest, res, next) => {
+  async (req: AuthRequest, res: any, next: any) => {
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
@@ -105,7 +105,7 @@ router.post(
 );
 
 // PUT /api/tournaments/:id
-router.put('/:id', authenticate, requireAdmin, async (req: AuthRequest, res, next) => {
+router.put('/:id', authenticate, requireAdmin, async (req: AuthRequest, res: any, next: any) => {
   try {
     const data = { ...req.body };
     const oldTournament = await prisma.tournament.findUnique({

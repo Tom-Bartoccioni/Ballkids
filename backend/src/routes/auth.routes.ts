@@ -15,7 +15,7 @@ router.post(
     body('email').isEmail().withMessage('Email invalide'),
     body('password').notEmpty().withMessage('Mot de passe requis'),
   ],
-  async (req, res, next) => {
+  async (req: AuthRequest, res: any, next: any) => {
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
@@ -48,7 +48,7 @@ router.post(
         throw new AppError('Configuration serveur incorrecte', 500);
       }
 
-      const token = jwt.sign({ userId: user.id }, secret, { expiresIn });
+      const token = jwt.sign({ userId: user.id }, secret, { expiresIn: expiresIn as jwt.SignOptions['expiresIn'] });
 
       res.json({
         success: true,
@@ -83,7 +83,7 @@ router.post(
     body('lastName').notEmpty().withMessage('Nom requis'),
     body('role').isIn(['ADMIN', 'COACH']).withMessage('Rôle invalide'),
   ],
-  async (req: AuthRequest, res, next) => {
+  async (req: AuthRequest, res: any, next: any) => {
     try {
       if (req.user?.role !== 'ADMIN') {
         throw new AppError('Accès réservé aux administrateurs', 403);
@@ -145,7 +145,7 @@ router.post(
 );
 
 // GET /api/auth/me
-router.get('/me', authenticate, async (req: AuthRequest, res, next) => {
+router.get('/me', authenticate, async (req: AuthRequest, res: any, next: any) => {
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.user?.id },
@@ -186,7 +186,7 @@ router.put(
       .isLength({ min: 6 })
       .withMessage('Le nouveau mot de passe doit contenir au moins 6 caractères'),
   ],
-  async (req: AuthRequest, res, next) => {
+  async (req: AuthRequest, res: any, next: any) => {
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {

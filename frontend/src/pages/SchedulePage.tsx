@@ -385,7 +385,7 @@ export default function SchedulePage() {
     return map
   }, [currentDay?.tournamentScores])
 
-  const { minDayScore, maxDayScore } = useMemo(() => {
+  const { minDayScore: minDayScore, maxDayScore: maxDayScore } = useMemo(() => {
     const values = Array.from(dayScoreByBallkidId.values())
     if (values.length === 0) return { minDayScore: 0, maxDayScore: 20 }
     return {
@@ -884,12 +884,12 @@ export default function SchedulePage() {
     try {
       await assignDayMutation.mutateAsync({
         ballkidId: activeItem.ballkidId,
-        teamId: target.teamId,
+        teamId: target.teamId!,
         isReserve: target.isReserve,
       })
       await assignDayMutation.mutateAsync({
         ballkidId: target.ballkidId,
-        teamId: activeItem.fromTeamId,
+        teamId: activeItem.fromTeamId!,
         isReserve: activeItem.fromIsReserve,
       })
     } finally {
@@ -943,7 +943,7 @@ export default function SchedulePage() {
     if (!activeItem || activeItem.fromIsReserve || !currentDay?.id) return
     await assignDayMutation.mutateAsync({
       ballkidId: activeItem.ballkidId,
-      teamId: activeItem.fromTeamId,
+      teamId: activeItem.fromTeamId!,
       isReserve: true,
     })
     setDraggedDayItem(null)

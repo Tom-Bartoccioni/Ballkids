@@ -865,9 +865,9 @@ export default function BallkidDetailPage() {
             {(isAdmin || tournamentNotes.length > 0) ? (
               tournamentNotes.length > 0 ? (
                 <div className="space-y-2">
-                  {tournamentNotes.map((day) => {
+                  {tournamentNotes.map((day: any) => {
                     const avg = day.scores.length
-                      ? day.scores.reduce((a, b) => a + b, 0) / day.scores.length
+                      ? day.scores.reduce((a: number, b: number) => a + b, 0) / day.scores.length
                       : null
                     const draftValue = tournamentDrafts[day.dayNumber] ?? ''
                     return (

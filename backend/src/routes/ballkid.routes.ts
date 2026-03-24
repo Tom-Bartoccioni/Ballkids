@@ -232,7 +232,7 @@ router.post(
     body('birthDate').isISO8601().withMessage('Date de naissance invalide'),
     body('gender').isIn(['MALE', 'FEMALE', 'OTHER']).withMessage('Genre invalide'),
   ],
-  async (req: AuthRequest, res, next) => {
+  async (req: AuthRequest, res: any, next: any) => {
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {

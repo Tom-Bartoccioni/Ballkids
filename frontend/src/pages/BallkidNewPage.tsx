@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToast } from '@/hooks/use-toast'
-import { ArrowLeft, Save, Loader2, User, Mail, Phone, MapPin, Shirt, Award } from 'lucide-react'
+import { ArrowLeft, Save, Loader2, User, Mail, MapPin, Shirt, Award } from 'lucide-react'
 
 const ballkidSchema = z.object({
   firstName: z.string().min(1, 'Prénom requis'),

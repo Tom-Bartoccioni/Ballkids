@@ -8,7 +8,6 @@ import {
   Users,
   ClipboardCheck,
   GraduationCap,
-  UsersRound,
   Calendar,
   UserCog,
   LogOut,

@@ -49,7 +49,7 @@ export const authenticate = async (
       throw new AppError('Utilisateur non trouvé', 401);
     }
 
-    req.user = user;
+    req.user = { id: user.id, email: user.email, role: user.role as UserRoleType };
     next();
   } catch (error) {
     if (error instanceof jwt.JsonWebTokenError) {

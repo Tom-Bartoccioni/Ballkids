@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/hooks/use-toast'
-import { UserCog, AlertTriangle, CheckCircle, Download, Plus, Trash2, X, Check, Pencil, Calendar } from 'lucide-react'
+import { UserCog, AlertTriangle, CheckCircle, Download, Plus, Trash2, X, Check, Calendar } from 'lucide-react'
 
 export default function CoachesPage() {
   const { isAdmin } = useAuth()
