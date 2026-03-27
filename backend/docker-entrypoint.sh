@@ -23,11 +23,16 @@ const prisma = new PrismaClient();
       data: { email: 'coach@ballkids.com', password: coachHash, firstName: 'Coach', lastName: 'Principal', role: 'COACH' }
     });
     console.log('Coach created: coach@ballkids.com / coach123');
-    const testHash = await bcrypt.hash('test123', 10);
+    const testAdminHash = await bcrypt.hash('testadmin123', 10);
     await prisma.user.create({
-      data: { email: 'test@ballkids.com', password: testHash, firstName: 'Test', lastName: 'Utilisateur', role: 'ADMIN' }
+      data: { email: 'testadmin@ballkids.com', password: testAdminHash, firstName: 'TestAdmin', lastName: 'Test', role: 'ADMIN' }
     });
-    console.log('Test account created: test@ballkids.com / test123');
+    console.log('Test Admin created: testadmin@ballkids.com / testadmin123');
+    const testCoachHash = await bcrypt.hash('testcoach123', 10);
+    await prisma.user.create({
+      data: { email: 'testcoach@ballkids.com', password: testCoachHash, firstName: 'TestCoach', lastName: 'Test', role: 'COACH' }
+    });
+    console.log('Test Coach created: testcoach@ballkids.com / testcoach123');
     await prisma.tournament.create({
       data: {
         name: 'Roland Garros 2026',
