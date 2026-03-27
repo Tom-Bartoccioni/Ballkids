@@ -41,10 +41,8 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <div className="mx-auto w-12 h-12 bg-primary rounded-xl flex items-center justify-center mb-4">
-            <span className="text-white font-bold text-xl">BK</span>
-          </div>
-          <CardTitle className="text-2xl">Ballkids Manager</CardTitle>
+          <img src="/logo4.png" alt="Ballkidsgo" className="mx-auto h-20 w-20 rounded-full object-cover mb-4" />
+          <CardTitle className="text-2xl">Ballkidsgo</CardTitle>
           <CardDescription>
             Connectez-vous pour accéder à l'application
           </CardDescription>

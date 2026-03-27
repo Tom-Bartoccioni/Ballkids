@@ -3,11 +3,10 @@ import { body, query, validationResult } from 'express-validator';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import { parse } from 'csv-parse';
-import { Readable } from 'stream';
 import prisma from '../lib/prisma.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { authenticate, requireAdmin, AuthRequest } from '../middleware/auth.js';
+import { parseSpreadsheet } from '../lib/spreadsheet.js';
 
 // Constantes pour remplacer les enums (SQLite ne supporte pas les enums)
 const BallkidStatus = {
@@ -356,7 +355,7 @@ router.post(
   async (req: AuthRequest, res, next) => {
     try {
       if (!req.file) {
-        throw new AppError('Fichier CSV requis', 400);
+        throw new AppError('Fichier requis (CSV ou Excel)', 400);
       }
 
       const { tournamentId } = req.body;
@@ -364,21 +363,7 @@ router.post(
         throw new AppError('Tournoi requis', 400);
       }
 
-      const records: any[] = [];
-      const headerLine = req.file.buffer.toString('utf8', 0, 1024).split(/\r?\n/)[0] || '';
-      const delimiter = headerLine.includes(';') ? ';' : ',';
-      const parser = Readable.from(req.file.buffer).pipe(
-        parse({
-          columns: true,
-          skip_empty_lines: true,
-          trim: true,
-          delimiter,
-        })
-      );
-
-      for await (const record of parser) {
-        records.push(record);
-      }
+      const records = await parseSpreadsheet(req.file.buffer, req.file.originalname);
 
       const created: any[] = [];
       const errors: any[] = [];
@@ -407,14 +392,14 @@ router.post(
               firstName: getField(['prenom', 'prénom', 'firstname', 'firstName', 'first name']) || '',
               lastName: getField(['nom', 'lastname', 'lastName', 'last name']) || '',
               email: getField(['email', 'mail']) || '',
-              birthDate: new Date(getField(['dateNaissance', 'datenaissance', 'birthDate', 'birth date']) || '2010-01-01'),
+              birthDate: parseBirthDate(getField(['dateNaissance', 'datenaissance', 'birthDate', 'birth date', 'age', 'date de naissance', 'ne(e)', 'nee'])),
               gender: mapGender(getField(['sexe', 'genre', 'gender'])),
-              phone: getField(['telephone', 'téléphone', 'phone']) || null,
+              phone: getField(['telephone', 'téléphone', 'phone', 'telephone 1', 'telephone 2', 'telephone 3', 'tel', 'portable']) || null,
               address: getField(['adresse', 'address']) || null,
-              postalCode: getField(['codePostal', 'codepostal', 'postalCode', 'postal code']) || null,
+              postalCode: getField(['codePostal', 'codepostal', 'postalCode', 'postal code', 'cp', 'code postal']) || null,
               city: getField(['ville', 'city']) || null,
               club: getField(['club']) || null,
-              licenseNumber: getField(['licence', 'license', 'licenseNumber', 'numeroLicence']) || null,
+              licenseNumber: getField(['licence', 'license', 'licenseNumber', 'numeroLicence', 'n° licence', 'numero licence']) || null,
               tshirtSize: getField(['tailleTshirt', 'tailletshirt', 'tshirtSize', 't-shirt']) || null,
               shortSize: getField(['tailleShort', 'tailleshort', 'shortSize']) || null,
               tracksuitSize: getField(['tailleSurvetement', 'taillesurvetement', 'tracksuitSize']) || null,
@@ -441,6 +426,18 @@ router.post(
     }
   }
 );
+
+function parseBirthDate(value: string): Date {
+  if (!value) return new Date('2010-01-01');
+  // Already ISO format (from spreadsheet parser): 2012-03-15
+  if (/^\d{4}-\d{2}-\d{2}/.test(value)) return new Date(value);
+  // French format: 15/03/2012 or 15-03-2012
+  const frMatch = value.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+  if (frMatch) return new Date(`${frMatch[3]}-${frMatch[2].padStart(2, '0')}-${frMatch[1].padStart(2, '0')}`);
+  // Try as-is
+  const d = new Date(value);
+  return isNaN(d.getTime()) ? new Date('2010-01-01') : d;
+}
 
 function mapGender(value: string): string {
   const v = value?.toLowerCase();

@@ -5,47 +5,54 @@ import fs from 'fs';
 import prisma from '../lib/prisma.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
+import { createExcelBuffer } from '../lib/spreadsheet.js';
 
 const router = Router();
+
+// Helper: fetch ballkids data for export
+async function getBallkidsExportData(query: any) {
+  const { tournamentId, status } = query;
+  const where: any = {};
+  if (tournamentId) where.tournamentId = tournamentId;
+  if (status) where.status = status;
+
+  const ballkids = await prisma.ballkid.findMany({
+    where,
+    orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+  });
+
+  const headers = [
+    'Nom', 'Prénom', 'Date naissance', 'Sexe', 'Email', 'Téléphone',
+    'Adresse', 'Code postal', 'Ville', 'Club', 'Licence',
+    'Taille T-shirt', 'Taille Short', 'Taille Survêtement', 'Pointure', 'Statut'
+  ];
+
+  const rows = ballkids.map((b) => [
+    b.lastName,
+    b.firstName,
+    b.birthDate.toISOString().split('T')[0],
+    b.gender,
+    b.email,
+    b.phone || '',
+    b.address || '',
+    b.postalCode || '',
+    b.city || '',
+    b.club || '',
+    b.licenseNumber || '',
+    b.tshirtSize || '',
+    b.shortSize || '',
+    b.tracksuitSize || '',
+    b.shoeSize || '',
+    b.status,
+  ]);
+
+  return { headers, rows };
+}
 
 // GET /api/export/ballkids/csv - Export CSV des ramasseurs
 router.get('/ballkids/csv', authenticate, async (req: AuthRequest, res, next) => {
   try {
-    const { tournamentId, status } = req.query;
-
-    const where: any = {};
-    if (tournamentId) where.tournamentId = tournamentId;
-    if (status) where.status = status;
-
-    const ballkids = await prisma.ballkid.findMany({
-      where,
-      orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
-    });
-
-    const headers = [
-      'Nom', 'Prénom', 'Date naissance', 'Sexe', 'Email', 'Téléphone',
-      'Adresse', 'Code postal', 'Ville', 'Club', 'Licence',
-      'Taille T-shirt', 'Taille Short', 'Taille Survêtement', 'Pointure', 'Statut'
-    ];
-
-    const rows = ballkids.map((b) => [
-      b.lastName,
-      b.firstName,
-      b.birthDate.toISOString().split('T')[0],
-      b.gender,
-      b.email,
-      b.phone || '',
-      b.address || '',
-      b.postalCode || '',
-      b.city || '',
-      b.club || '',
-      b.licenseNumber || '',
-      b.tshirtSize || '',
-      b.shortSize || '',
-      b.tracksuitSize || '',
-      b.shoeSize || '',
-      b.status,
-    ]);
+    const { headers, rows } = await getBallkidsExportData(req.query);
 
     const csv = [headers, ...rows]
       .map((row) => row.map((cell) => `"${cell}"`).join(';'))
@@ -53,47 +60,65 @@ router.get('/ballkids/csv', authenticate, async (req: AuthRequest, res, next) =>
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', 'attachment; filename=ramasseurs.csv');
-    res.send('\uFEFF' + csv); // BOM pour Excel
+    res.send('\uFEFF' + csv);
   } catch (error) {
     next(error);
   }
 });
 
+// GET /api/export/ballkids/xlsx - Export Excel des ramasseurs
+router.get('/ballkids/xlsx', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const { headers, rows } = await getBallkidsExportData(req.query);
+    const buffer = await createExcelBuffer('Ramasseurs', headers, rows);
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename=ramasseurs.xlsx');
+    res.send(buffer);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Helper: fetch teams data for export
+async function getTeamsExportData(tournamentId: string) {
+  const teams = await prisma.team.findMany({
+    where: { tournamentId },
+    orderBy: { order: 'asc' },
+    include: {
+      assignments: {
+        where: { tournamentDayId: null },
+        include: { ballkid: true },
+        orderBy: { position: 'asc' },
+      },
+    },
+  });
+
+  const headers = ['Équipe', 'Position', 'Nom', 'Prénom', 'Remplaçant'];
+  const rows: string[][] = [];
+
+  teams.forEach((team) => {
+    team.assignments.forEach((a) => {
+      rows.push([
+        team.name,
+        a.position?.toString() || '',
+        a.ballkid.lastName,
+        a.ballkid.firstName,
+        a.isReserve ? 'Oui' : 'Non',
+      ]);
+    });
+  });
+
+  return { headers, rows };
+}
+
 // GET /api/export/teams/csv - Export CSV des équipes
 router.get('/teams/csv', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const { tournamentId } = req.query;
+    if (!tournamentId) throw new AppError('tournamentId requis', 400);
 
-    if (!tournamentId) {
-      throw new AppError('tournamentId requis', 400);
-    }
-
-    const teams = await prisma.team.findMany({
-      where: { tournamentId: tournamentId as string },
-      orderBy: { order: 'asc' },
-      include: {
-        assignments: {
-          where: { tournamentDayId: null },
-          include: { ballkid: true },
-          orderBy: { position: 'asc' },
-        },
-      },
-    });
-
-    const headers = ['Équipe', 'Position', 'Nom', 'Prénom', 'Remplaçant'];
-    const rows: string[][] = [];
-
-    teams.forEach((team) => {
-      team.assignments.forEach((a) => {
-        rows.push([
-          team.name,
-          a.position?.toString() || '',
-          a.ballkid.lastName,
-          a.ballkid.firstName,
-          a.isReserve ? 'Oui' : 'Non',
-        ]);
-      });
-    });
+    const { headers, rows } = await getTeamsExportData(tournamentId as string);
 
     const csv = [headers, ...rows]
       .map((row) => row.map((cell) => `"${cell}"`).join(';'))
@@ -102,6 +127,23 @@ router.get('/teams/csv', authenticate, async (req: AuthRequest, res, next) => {
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', 'attachment; filename=equipes.csv');
     res.send('\uFEFF' + csv);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/export/teams/xlsx - Export Excel des équipes
+router.get('/teams/xlsx', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const { tournamentId } = req.query;
+    if (!tournamentId) throw new AppError('tournamentId requis', 400);
+
+    const { headers, rows } = await getTeamsExportData(tournamentId as string);
+    const buffer = await createExcelBuffer('Équipes', headers, rows);
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename=equipes.xlsx');
+    res.send(buffer);
   } catch (error) {
     next(error);
   }
@@ -289,6 +331,49 @@ router.get('/coaches/csv', authenticate, async (req: AuthRequest, res, next) => 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', 'attachment; filename=planning-coachs.csv');
     res.send('\uFEFF' + csv);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/export/coaches/xlsx - Export Excel planning coachs
+router.get('/coaches/xlsx', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const { tournamentId } = req.query;
+    if (!tournamentId) throw new AppError('tournamentId requis', 400);
+
+    const days = await prisma.tournamentDay.findMany({
+      where: { tournamentId: tournamentId as string },
+      orderBy: { dayNumber: 'asc' },
+    });
+
+    const coaches = await prisma.coach.findMany({
+      where: { tournamentId: tournamentId as string },
+      include: {
+        user: true,
+        assignments: {
+          include: { tournamentDay: true, court: true },
+        },
+      },
+    });
+
+    const headers = ['Coach', ...days.map((d) => `Jour ${d.dayNumber}`)];
+    const rows = coaches.map((coach) => {
+      const row: string[] = [`${coach.user.firstName} ${coach.user.lastName}`];
+      days.forEach((day) => {
+        const assignment = coach.assignments.find(
+          (a) => a.tournamentDay.dayNumber === day.dayNumber
+        );
+        row.push(assignment ? assignment.court.name : 'Repos');
+      });
+      return row;
+    });
+
+    const buffer = await createExcelBuffer('Planning Coachs', headers, rows);
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename=planning-coachs.xlsx');
+    res.send(buffer);
   } catch (error) {
     next(error);
   }

@@ -300,7 +300,7 @@ export default function TrainingPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2">
-          <GraduationCap className="w-6 h-6 text-blue-500" />
+          <GraduationCap className="w-6 h-6 text-emerald-700" />
           Séances de formation
         </h1>
         <p className="text-muted-foreground">
@@ -320,7 +320,7 @@ export default function TrainingPage() {
               className="gap-2"
             >
               {session?.isCompleted ? (
-                <CheckCircle className="w-4 h-4 text-green-500" />
+                <CheckCircle className="w-4 h-4 text-emerald-600" />
               ) : (
                 <Clock className="w-4 h-4" />
               )}
@@ -357,8 +357,8 @@ export default function TrainingPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
-              <div className="p-3 bg-blue-100 rounded-lg">
-                <Users className="w-6 h-6 text-blue-600" />
+              <div className="p-3 bg-emerald-100 rounded-lg">
+                <Users className="w-6 h-6 text-emerald-700" />
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Total</p>
@@ -370,8 +370,8 @@ export default function TrainingPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
-              <div className="p-3 bg-green-100 rounded-lg">
-                <CheckCircle className="w-6 h-6 text-green-600" />
+              <div className="p-3 bg-emerald-100 rounded-lg">
+                <CheckCircle className="w-6 h-6 text-emerald-700" />
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Notés</p>
@@ -396,8 +396,8 @@ export default function TrainingPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
-              <div className="p-3 bg-orange-100 rounded-lg">
-                <Clock className="w-6 h-6 text-orange-600" />
+              <div className="p-3 bg-amber-100 rounded-lg">
+                <Clock className="w-6 h-6 text-amber-800" />
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">En attente</p>
@@ -492,9 +492,9 @@ export default function TrainingPage() {
                           <span
                             className={`px-2 py-1 rounded text-xs ${
                               item.sessionsAttended === 4
-                                ? 'bg-green-100 text-green-700'
+                                ? 'bg-emerald-100 text-emerald-800'
                                 : item.sessionsAttended >= 2
-                                ? 'bg-yellow-100 text-yellow-700'
+                                ? 'bg-amber-100 text-amber-800'
                                 : 'bg-red-100 text-red-700'
                             }`}
                           >
@@ -523,7 +523,7 @@ export default function TrainingPage() {
                     <input
                       ref={importInputRef}
                       type="file"
-                      accept=".csv"
+                      accept=".csv,.xlsx,.xls"
                       className="hidden"
                       onChange={handleImportFile}
                     />
@@ -534,7 +534,7 @@ export default function TrainingPage() {
                       disabled={importMutation.isPending || !tournament?.id}
                     >
                       <Upload className="w-4 h-4 mr-2" />
-                      {importMutation.isPending ? 'Import...' : 'Importer CSV'}
+                      {importMutation.isPending ? 'Import...' : 'Importer'}
                     </Button>
                     <Button variant="outline" size="sm" onClick={handleOpenCriteria}>
                       <Settings className="w-4 h-4 mr-2" />
@@ -543,7 +543,7 @@ export default function TrainingPage() {
                   </>
                 )}
                 {sessions.find((s: any) => s.sessionNumber === activeSession)?.isCompleted && (
-                  <span className="text-sm font-normal text-green-600 flex items-center gap-1">
+                  <span className="text-sm font-normal text-emerald-700 flex items-center gap-1">
                     <CheckCircle className="w-4 h-4" />
                     Terminée
                   </span>
@@ -624,7 +624,7 @@ export default function TrainingPage() {
                               ) : currentScore !== null && editingTrainingId !== inputKey ? (
                                 <button
                                   type="button"
-                                  className="inline-flex items-center gap-2 font-mono text-lg font-semibold text-blue-600 hover:text-blue-700"
+                                  className="inline-flex items-center gap-2 font-mono text-lg font-semibold text-emerald-700 hover:text-emerald-800"
                                   onClick={() => {
                                     setScores((prev) => ({ ...prev, [inputKey]: currentScore.toFixed(1) }))
                                     setEditingTrainingId(inputKey)
@@ -676,7 +676,7 @@ export default function TrainingPage() {
                           </td>
                           <td className="p-4 text-center">
                             {currentScore !== null ? (
-                              <CheckCircle className="w-5 h-5 text-green-500 mx-auto" />
+                              <CheckCircle className="w-5 h-5 text-emerald-600 mx-auto" />
                             ) : isAdmin ? (
                               <button
                                 onClick={() => {
@@ -692,7 +692,7 @@ export default function TrainingPage() {
                                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200 ${
                                   item[`absent${activeSession}` as keyof typeof item]
                                     ? 'bg-red-100 text-red-700 hover:bg-red-200 shadow-sm'
-                                    : 'bg-gray-100 text-gray-500 hover:bg-orange-100 hover:text-orange-600'
+                                    : 'bg-gray-100 text-gray-500 hover:bg-amber-100 hover:text-amber-800'
                                 } disabled:opacity-50`}
                                 title={item[`absent${activeSession}` as keyof typeof item] ? 'Cliquez pour retirer l\'absence' : 'Cliquez pour marquer absent'}
                               >

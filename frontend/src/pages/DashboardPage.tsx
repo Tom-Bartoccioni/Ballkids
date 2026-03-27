@@ -68,28 +68,28 @@ export default function DashboardPage() {
       value: ballkidsData?.pagination?.total || 0,
       icon: Users,
       href: '/ballkids',
-      color: 'bg-blue-500',
+      color: 'bg-emerald-700',
     },
     {
       name: 'En attente',
       value: pendingData?.ballkids?.length || 0,
       icon: Clock,
       href: '/ballkids/pending',
-      color: 'bg-orange-500',
+      color: 'bg-red-700',
     },
     {
       name: 'Sélectionnés',
       value: selectedData?.pagination?.total || 0,
       icon: UserCheck,
       href: '/selection',
-      color: 'bg-green-500',
+      color: 'bg-purple-800',
     },
     {
       name: 'Équipes',
       value: tournament?._count?.teams || 0,
       icon: UsersRound,
       href: '/schedule',
-      color: 'bg-purple-500',
+      color: 'bg-amber-800',
     },
   ]
 
@@ -237,12 +237,12 @@ export default function DashboardPage() {
           <CardContent className="space-y-2">
             <Link
               to="/ballkids/pending"
-              className="block p-3 rounded-lg bg-orange-50 hover:bg-orange-100 transition-colors"
+              className="block p-3 rounded-lg bg-red-50 hover:bg-red-100 transition-colors"
             >
-              <span className="font-medium text-orange-700">
+              <span className="font-medium text-red-800">
                 Valider les inscriptions en attente
               </span>
-              <span className="text-sm text-orange-600 block">
+              <span className="text-sm text-red-600 block">
                 {pendingData?.ballkids?.length || 0} en attente
               </span>
             </Link>
@@ -250,10 +250,10 @@ export default function DashboardPage() {
               to="/schedule"
               className="block p-3 rounded-lg bg-purple-50 hover:bg-purple-100 transition-colors"
             >
-              <span className="font-medium text-purple-700">
+              <span className="font-medium text-purple-800">
                 Gérer les équipes
               </span>
-              <span className="text-sm text-purple-600 block">
+              <span className="text-sm text-purple-700 block">
                 Constitution et modifications
               </span>
             </Link>
@@ -271,14 +271,14 @@ export default function DashboardPage() {
                 return (
                   <div
                     key={num}
-                    className="flex items-center justify-between p-2 rounded bg-gray-50"
+                    className="flex items-center justify-between p-2 rounded bg-emerald-50"
                   >
                     <span>Séance {num}</span>
                     <span
                       className={`text-xs px-2 py-1 rounded ${
                         isCompleted
-                          ? 'bg-green-100 text-green-700'
-                          : 'bg-gray-200 text-gray-600'
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : 'bg-gray-200 text-gray-500'
                       }`}
                     >
                       {isCompleted ? 'Terminée' : 'En attente'}

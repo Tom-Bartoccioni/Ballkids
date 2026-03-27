@@ -257,7 +257,7 @@ export default function BallkidsPage() {
               <input
                 ref={importInputRef}
                 type="file"
-                accept=".csv"
+                accept=".csv,.xlsx,.xls"
                 className="hidden"
                 onChange={handleImportFile}
               />

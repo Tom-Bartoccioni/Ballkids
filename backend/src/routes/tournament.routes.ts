@@ -87,13 +87,16 @@ router.post(
 
       const { name, year, startDate, endDate } = req.body;
 
+      // Only auto-activate if no other tournament is active
+      const hasActive = await prisma.tournament.findFirst({ where: { isActive: true } });
+
       const tournament = await prisma.tournament.create({
         data: {
           name,
           year,
           startDate: new Date(startDate),
           endDate: new Date(endDate),
-          isActive: true,
+          isActive: !hasActive,
         },
       });
 

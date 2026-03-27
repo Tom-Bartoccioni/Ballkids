@@ -8,9 +8,9 @@ services:
       NODE_ENV: production
       PORT: 3001
       DATABASE_URL: "file:/app/data/prod.db"
-      JWT_SECRET: "${JWT_SECRET:-change-me-in-production}"
+      JWT_SECRET: "${JWT_SECRET:-LHwwONJYJluU4hLhbeNq5ISMQdqoClOYkUMol7TOLoM=}"
       JWT_EXPIRES_IN: "7d"
-      FRONTEND_URL: "http://localhost"
+      FRONTEND_URL: "http://5.75.152.72"
     volumes:
       - backend_uploads:/app/uploads
       - backend_data:/app/data

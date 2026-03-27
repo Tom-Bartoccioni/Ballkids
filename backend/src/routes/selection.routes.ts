@@ -1,11 +1,10 @@
 import { Router } from 'express';
 import { body, validationResult } from 'express-validator';
 import multer from 'multer';
-import { parse } from 'csv-parse';
-import { Readable } from 'stream';
 import prisma from '../lib/prisma.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { authenticate, requireAdmin, requireCoachOrAdmin, AuthRequest } from '../middleware/auth.js';
+import { parseSpreadsheet, getSheetNames } from '../lib/spreadsheet.js';
 
 // Constante pour remplacer l'enum (SQLite ne supporte pas les enums)
 const BallkidStatus = {
@@ -275,25 +274,12 @@ router.post(
   async (req: AuthRequest, res, next) => {
     try {
       if (!req.file) {
-        throw new AppError('Fichier CSV requis', 400);
+        throw new AppError('Fichier requis (CSV ou Excel)', 400);
       }
 
       const tournamentId = req.params.tournamentId;
-      const records: any[] = [];
-      const headerLine = req.file.buffer.toString('utf8', 0, 1024).split(/\r?\n/)[0] || '';
-      const delimiter = headerLine.includes(';') ? ';' : ',';
-      const parser = Readable.from(req.file.buffer).pipe(
-        parse({
-          columns: true,
-          skip_empty_lines: true,
-          trim: true,
-          delimiter,
-        })
-      );
-
-      for await (const record of parser) {
-        records.push(record);
-      }
+      const sheetName = req.body.sheetName || undefined;
+      const records = await parseSpreadsheet(req.file.buffer, req.file.originalname, sheetName);
 
       let session = await prisma.selectionSession.findUnique({
         where: { tournamentId },
@@ -341,6 +327,19 @@ router.post(
       const errors: any[] = [];
       const scorerId = req.user!.id;
 
+      // Pre-scan: detect max score to auto-normalize if scores are not on 0-20 scale
+      let maxScoreInFile = 0;
+      for (const record of records) {
+        const nr: Record<string, string> = {};
+        for (const [key, value] of Object.entries(record)) {
+          nr[normalizeKey(key)] = value as string;
+        }
+        const raw = ['total', 'score', 'note', 'resultat', 'resultat'].reduce((v, k) => v || nr[k] || '', '');
+        const val = parseFloat((raw || '').toString().replace(',', '.'));
+        if (!isNaN(val) && val > maxScoreInFile) maxScoreInFile = val;
+      }
+      const needsNormalization = maxScoreInFile > 20;
+
       for (const record of records) {
         try {
           const normalizedRecord: Record<string, string> = {};
@@ -363,10 +362,16 @@ router.post(
           let lastName = getField(['nom', 'lastName', 'lastname', 'last name']).trim();
           const fullName = (!firstName && lastName) ? lastName : '';
           const scoreRaw = getField(['total', 'score', 'note', 'resultat', 'résultat']);
-          const scoreValue = parseFloat(scoreRaw.replace(',', '.'));
+          let scoreValue = parseFloat(scoreRaw.replace(',', '.'));
 
-          if (Number.isNaN(scoreValue) || scoreValue < 0 || scoreValue > 20) {
-            throw new AppError('Note invalide (0-20)', 400);
+          if (Number.isNaN(scoreValue) || scoreValue < 0) {
+            throw new AppError('Note invalide', 400);
+          }
+
+          // Normalize to 0-20 scale if needed
+          if (needsNormalization) {
+            scoreValue = (scoreValue / maxScoreInFile) * 20;
+            scoreValue = Math.round(scoreValue * 100) / 100;
           }
 
           let ballkidId: string | undefined;

@@ -1171,7 +1171,7 @@ export default function SchedulePage() {
             onClick={handleExportDay}
             title="Export CSV du planning du jour (terrains, équipes, ramasseurs)"
           >
-            <Upload className="w-4 h-4 mr-2" />
+            <Download className="w-4 h-4 mr-2" />
             CSV Jour {selectedDay}
           </Button>
           <Button
@@ -1179,7 +1179,7 @@ export default function SchedulePage() {
             onClick={handleExportPDF}
             title="Export PDF du planning du jour (par terrain et équipes)"
           >
-            <Upload className="w-4 h-4 mr-2" />
+            <Download className="w-4 h-4 mr-2" />
             PDF
           </Button>
         </div>

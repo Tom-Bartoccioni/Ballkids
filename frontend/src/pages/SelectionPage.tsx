@@ -344,7 +344,7 @@ export default function SelectionPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Trophy className="w-6 h-6 text-yellow-500" />
+            <Trophy className="w-6 h-6 text-amber-800" />
             Sélection initiale
           </h1>
           <p className="text-muted-foreground">
@@ -372,8 +372,8 @@ export default function SelectionPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
-              <div className="p-3 bg-blue-100 rounded-lg">
-                <Users className="w-6 h-6 text-blue-600" />
+              <div className="p-3 bg-emerald-100 rounded-lg">
+                <Users className="w-6 h-6 text-emerald-700" />
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Total inscrits</p>
@@ -385,8 +385,8 @@ export default function SelectionPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
-              <div className="p-3 bg-orange-100 rounded-lg">
-                <Star className="w-6 h-6 text-orange-600" />
+              <div className="p-3 bg-red-100 rounded-lg">
+                <Star className="w-6 h-6 text-red-700" />
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Notés</p>
@@ -398,8 +398,8 @@ export default function SelectionPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
-              <div className="p-3 bg-green-100 rounded-lg">
-                <CheckCircle className="w-6 h-6 text-green-600" />
+              <div className="p-3 bg-emerald-100 rounded-lg">
+                <CheckCircle className="w-6 h-6 text-emerald-700" />
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Sélectionnés</p>
@@ -412,7 +412,7 @@ export default function SelectionPage() {
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
               <div className="p-3 bg-purple-100 rounded-lg">
-                <Award className="w-6 h-6 text-purple-600" />
+                <Award className="w-6 h-6 text-purple-800" />
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Objectif</p>
@@ -425,11 +425,11 @@ export default function SelectionPage() {
 
       {/* Alerte si pas assez de notes */}
       {notedCount < 80 && notedCount > 0 && selectedCount === 0 && (
-        <Card className="border-orange-200 bg-orange-50">
+        <Card className="border-red-200 bg-red-50">
           <CardContent className="py-4">
             <div className="flex items-center gap-3">
-              <AlertTriangle className="w-5 h-5 text-orange-600" />
-              <p className="text-orange-800">
+              <AlertTriangle className="w-5 h-5 text-red-700" />
+              <p className="text-red-800">
                 <span className="font-medium">{notedCount}</span> ramasseurs notés sur les 80 minimum requis.
                 Il manque <span className="font-medium">{80 - notedCount}</span> notes pour pouvoir faire la sélection.
               </p>
@@ -440,11 +440,11 @@ export default function SelectionPage() {
 
       {/* Sélection terminée */}
       {selectedCount > 0 && (
-        <Card className="border-green-200 bg-green-50">
+        <Card className="border-emerald-200 bg-emerald-50">
           <CardContent className="py-4">
             <div className="flex items-center gap-3">
-              <CheckCircle className="w-5 h-5 text-green-600" />
-              <p className="text-green-800">
+              <CheckCircle className="w-5 h-5 text-emerald-700" />
+              <p className="text-emerald-800">
                 La sélection est terminée : <span className="font-medium">{selectedCount}</span> ramasseurs sélectionnés.
               </p>
             </div>
@@ -507,7 +507,7 @@ export default function SelectionPage() {
                 <input
                   ref={importInputRef}
                   type="file"
-                  accept=".csv"
+                  accept=".csv,.xlsx,.xls"
                   className="hidden"
                   onChange={handleImportFile}
                 />
@@ -518,7 +518,7 @@ export default function SelectionPage() {
                   disabled={importMutation.isPending || !tournament?.id}
                 >
                   <Upload className="w-4 h-4 mr-2" />
-                  {importMutation.isPending ? 'Import...' : 'Importer CSV'}
+                  {importMutation.isPending ? 'Import...' : 'Importer'}
                 </Button>
                 <Button variant="outline" size="sm" onClick={handleOpenCriteria}>
                   <Settings className="w-4 h-4 mr-2" />
@@ -594,7 +594,7 @@ export default function SelectionPage() {
                               {hasScore && editingSelectionId !== ballkid.id ? (
                                 <button
                                   type="button"
-                                  className="inline-flex items-center gap-2 font-mono text-lg font-semibold text-blue-600 hover:text-blue-700"
+                                  className="inline-flex items-center gap-2 font-mono text-lg font-semibold text-emerald-700 hover:text-emerald-800"
                                   onClick={(e) => {
                                     e.stopPropagation()
                                     setScores((prev) => ({
@@ -652,12 +652,12 @@ export default function SelectionPage() {
                           </td>
                           <td className="p-4">
                             {ballkid.status === 'SELECTED' && (
-                              <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700">
+                              <span className="text-xs px-2 py-1 rounded-full bg-emerald-100 text-emerald-800">
                                 Sélectionné
                               </span>
                             )}
                             {(ballkid.status === 'REGISTERED' || ballkid.status === 'RESERVE') && (
-                              <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-700">
+                              <span className="text-xs px-2 py-1 rounded-full bg-emerald-100 text-emerald-800">
                                 Inscrit
                               </span>
                             )}
@@ -732,9 +732,9 @@ export default function SelectionPage() {
                             <tr
                               className={`border-b hover:bg-gray-50 transition-colors ${
                                 item.status === 'SELECTED' 
-                                  ? 'bg-green-50' 
+                                  ? 'bg-emerald-50' 
                                   : isSelected 
-                                  ? 'bg-green-50/30' 
+                                  ? 'bg-emerald-50/30' 
                                   : ''
                               }`}
                               onClick={() => navigate(`/ballkids/${item.id}?from=selection`)}
@@ -743,9 +743,9 @@ export default function SelectionPage() {
                                 <span
                                   className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium ${
                                     originalIndex < 3
-                                      ? 'bg-yellow-100 text-yellow-700'
+                                      ? 'bg-amber-100 text-amber-800'
                                       : isSelected
-                                      ? 'bg-green-100 text-green-700'
+                                      ? 'bg-emerald-100 text-emerald-800'
                                       : 'bg-gray-100 text-gray-600'
                                   }`}
                                 >
@@ -772,12 +772,12 @@ export default function SelectionPage() {
                               </td>
                               <td className="p-4">
                                 {item.status === 'SELECTED' && (
-                                  <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 font-medium">
+                                  <span className="text-xs px-2 py-1 rounded-full bg-emerald-100 text-emerald-800 font-medium">
                                     ✓ Sélectionné
                                   </span>
                                 )}
                                 {item.status === 'REGISTERED' && isSelected && (
-                                  <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-700">
+                                  <span className="text-xs px-2 py-1 rounded-full bg-emerald-100 text-emerald-800">
                                     À sélectionner
                                   </span>
                                 )}
