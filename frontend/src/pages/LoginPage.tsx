@@ -76,11 +76,6 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-            <p className="text-xs text-gray-500 mb-2">Comptes de démo :</p>
-            <p className="text-xs text-gray-600">Admin : admin@ballkids.com / admin123</p>
-            <p className="text-xs text-gray-600">Coach : coach@ballkids.com / coach123</p>
-          </div>
         </CardContent>
       </Card>
     </div>
