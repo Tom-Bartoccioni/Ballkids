@@ -35,7 +35,7 @@ const prisma = new PrismaClient();
     console.log('Test Coach created: testcoach@ballkids.com / testcoach123');
     await prisma.tournament.create({
       data: {
-        name: 'Roland Garros 2026',
+        name: 'Monaco Master 2026',
         year: 2026,
         startDate: new Date('2026-05-24'),
         endDate: new Date('2026-06-07'),
@@ -49,7 +49,7 @@ const prisma = new PrismaClient();
   if (!tournament) {
     await prisma.tournament.create({
       data: {
-        name: 'Roland Garros 2026',
+        name: 'Monaco Master 2026',
         year: 2026,
         startDate: new Date('2026-05-24'),
         endDate: new Date('2026-06-07'),

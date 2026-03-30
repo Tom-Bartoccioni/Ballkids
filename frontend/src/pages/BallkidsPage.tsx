@@ -7,19 +7,19 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
 import { useToast } from '@/hooks/use-toast'
-import { Search, Plus, Upload, Download, ChevronLeft, ChevronRight, Clock, User, Star, Award, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
+import { Search, Plus, Upload, Download, ChevronLeft, ChevronRight, Clock, User, Star, Award, ArrowUpDown, ArrowUp, ArrowDown, Trash2, CheckCircle, XCircle, UserCheck, Shield, X } from 'lucide-react'
 
 type SortKey = 'lastName' | 'firstName' | 'phone' | 'email' | 'average' | 'status'
 type SortOrder = 'asc' | 'desc'
 
 const statusLabels: Record<string, { label: string; color: string }> = {
   REGISTERED: { label: 'Inscrit', color: 'bg-blue-100 text-blue-700' },
-  SELECTED: { label: 'Sélectionné', color: 'bg-green-100 text-green-700' },
-  RESERVE: { label: 'Remplaçant', color: 'bg-purple-100 text-purple-700' },
-  REJECTED: { label: 'Refusé', color: 'bg-red-100 text-red-700' },
+  SELECTED: { label: 'Selectionne', color: 'bg-green-100 text-green-700' },
+  RESERVE: { label: 'Remplacant', color: 'bg-purple-100 text-purple-700' },
+  REJECTED: { label: 'Refuse', color: 'bg-red-100 text-red-700' },
 }
 
-// Fonction pour déterminer quelle moyenne afficher et son label
+// Fonction pour determiner quelle moyenne afficher et son label
 function getScoreDisplay(ballkid: any) {
   if (ballkid.overallAverage !== null && ballkid.overallAverage !== undefined) {
     return { value: ballkid.overallAverage, label: 'Moyenne', color: 'text-green-600' }
@@ -28,7 +28,7 @@ function getScoreDisplay(ballkid: any) {
     return { value: ballkid.trainingAverage, label: 'Formation', color: 'text-blue-600' }
   }
   if (ballkid.selectionAverage !== null && ballkid.selectionAverage !== undefined) {
-    return { value: ballkid.selectionAverage, label: 'Sélection', color: 'text-orange-600' }
+    return { value: ballkid.selectionAverage, label: 'Selection', color: 'text-orange-600' }
   }
   return null
 }
@@ -43,7 +43,8 @@ export default function BallkidsPage() {
   const [statusFilter, setStatusFilter] = useState('')
   const [sortKey, setSortKey] = useState<SortKey>('lastName')
   const [sortOrder, setSortOrder] = useState<SortOrder>('asc')
-  
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
       setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
@@ -54,7 +55,7 @@ export default function BallkidsPage() {
   }
 
   const SortHeader = ({ column, label }: { column: SortKey; label: string }) => (
-    <th 
+    <th
       className="text-left p-4 font-medium cursor-pointer hover:bg-gray-100 select-none"
       onClick={() => handleSort(column)}
     >
@@ -68,8 +69,8 @@ export default function BallkidsPage() {
       </div>
     </th>
   )
-  
-  // Récupérer le tournoi actif
+
+  // Recuperer le tournoi actif
   const { data: tournamentData } = useQuery({
     queryKey: ['tournament', 'active'],
     queryFn: async () => {
@@ -99,13 +100,13 @@ export default function BallkidsPage() {
     },
   })
 
-  // Trier les données côté client
+  // Trier les donnees cote client
   const sortedBallkids = useMemo(() => {
     if (!data?.ballkids) return []
-    
+
     return [...data.ballkids].sort((a: any, b: any) => {
       let aVal: any, bVal: any
-      
+
       switch (sortKey) {
         case 'lastName':
           aVal = a.lastName?.toLowerCase() || ''
@@ -134,12 +135,74 @@ export default function BallkidsPage() {
         default:
           return 0
       }
-      
+
       if (aVal < bVal) return sortOrder === 'asc' ? -1 : 1
       if (aVal > bVal) return sortOrder === 'asc' ? 1 : -1
       return 0
     })
   }, [data?.ballkids, sortKey, sortOrder])
+
+  // Selection helpers
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === sortedBallkids.length) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(sortedBallkids.map((b: any) => b.id)))
+    }
+  }
+
+  const clearSelection = () => setSelectedIds(new Set())
+
+  // Bulk mutations
+  const bulkStatusMutation = useMutation({
+    mutationFn: async ({ ids, status }: { ids: string[]; status: string }) => {
+      const res = await api.post('/ballkids/bulk/status', { ids, status })
+      return res.data.data
+    },
+    onSuccess: (data, variables) => {
+      const label = statusLabels[variables.status]?.label || variables.status
+      toast({ title: 'Statut mis a jour', description: `${data.count} ramasseur(s) -> ${label}` })
+      queryClient.invalidateQueries({ queryKey: ['ballkids'] })
+      clearSelection()
+    },
+    onError: (err: any) => {
+      toast({ variant: 'destructive', title: 'Erreur', description: err.response?.data?.message || 'Echec de la mise a jour' })
+    },
+  })
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const res = await api.post('/ballkids/bulk/delete', { ids })
+      return res.data.data
+    },
+    onSuccess: (data) => {
+      toast({ title: 'Suppression terminee', description: `${data.count} ramasseur(s) supprime(s)` })
+      queryClient.invalidateQueries({ queryKey: ['ballkids'] })
+      clearSelection()
+    },
+    onError: (err: any) => {
+      toast({ variant: 'destructive', title: 'Erreur', description: err.response?.data?.message || 'Echec de la suppression' })
+    },
+  })
+
+  const handleBulkStatus = (status: string) => {
+    bulkStatusMutation.mutate({ ids: Array.from(selectedIds), status })
+  }
+
+  const handleBulkDelete = () => {
+    if (confirm(`Supprimer ${selectedIds.size} ramasseur(s) ? Cette action est irreversible.`)) {
+      bulkDeleteMutation.mutate(Array.from(selectedIds))
+    }
+  }
 
   const handleExport = async () => {
     try {
@@ -163,7 +226,7 @@ export default function BallkidsPage() {
       toast({
         variant: 'destructive',
         title: 'Erreur lors de l\'export',
-        description: err.response?.data?.message || 'Export CSV échoué',
+        description: err.response?.data?.message || 'Export CSV echoue',
       })
     }
   }
@@ -182,11 +245,21 @@ export default function BallkidsPage() {
       return res.data.data
     },
     onSuccess: (data) => {
-      const errorCount = data.errors || 0
+      const parts = [`${data.imported} importe(s)`]
+      if (data.skipped > 0) parts.push(`${data.skipped} doublon(s) ignore(s)`)
+      if (data.errors > 0) parts.push(`${data.errors} erreur(s)`)
       toast({
-        title: 'Import terminé',
-        description: `${data.imported} ramasseur(s) importé(s), ${errorCount} erreur(s)`,
+        title: 'Import termine',
+        description: parts.join(', '),
+        variant: data.skipped > 0 || data.errors > 0 ? 'destructive' : 'default',
       })
+      if (data.skipped > 0 && data.skippedDetails?.length > 0) {
+        const names = data.skippedDetails.slice(0, 5).map((s: any) => s.reason).join('\n')
+        toast({
+          title: `${data.skipped} doublon(s) detecte(s)`,
+          description: names,
+        })
+      }
       queryClient.invalidateQueries({ queryKey: ['ballkids'] })
       queryClient.invalidateQueries({ queryKey: ['ballkids', 'pending'] })
     },
@@ -194,7 +267,7 @@ export default function BallkidsPage() {
       toast({
         variant: 'destructive',
         title: 'Erreur lors de l\'import',
-        description: err.response?.data?.message || err.message || 'Import CSV échoué',
+        description: err.response?.data?.message || err.message || 'Import CSV echoue',
       })
     },
   })
@@ -209,6 +282,8 @@ export default function BallkidsPage() {
     importMutation.mutate(file)
     event.target.value = ''
   }
+
+  const isBulkLoading = bulkStatusMutation.isPending || bulkDeleteMutation.isPending
 
   return (
     <div className="space-y-6">
@@ -226,7 +301,7 @@ export default function BallkidsPage() {
                     {pendingCount} ramasseur{pendingCount > 1 ? 's' : ''} en attente de validation
                   </p>
                   <p className="text-sm text-orange-600">
-                    Ces inscriptions nécessitent votre approbation avant d'apparaître ici
+                    Ces inscriptions necessitent votre approbation avant d'apparaitre ici
                   </p>
                 </div>
               </div>
@@ -242,7 +317,7 @@ export default function BallkidsPage() {
 
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Ramasseurs validés</h1>
+          <h1 className="text-2xl font-bold">Ramasseurs valides</h1>
           <p className="text-muted-foreground">
             {data?.pagination?.total || 0} ramasseurs au total
           </p>
@@ -280,6 +355,46 @@ export default function BallkidsPage() {
         </div>
       </div>
 
+      {/* Barre d'actions bulk */}
+      {selectedIds.size > 0 && isAdmin && (
+        <Card className="border-blue-200 bg-blue-50">
+          <CardContent className="py-3">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-blue-800">
+                  {selectedIds.size} selectionne{selectedIds.size > 1 ? 's' : ''}
+                </span>
+                <Button variant="ghost" size="sm" onClick={clearSelection} className="text-blue-600 hover:text-blue-800">
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                <Button size="sm" variant="outline" disabled={isBulkLoading} onClick={() => handleBulkStatus('REGISTERED')} className="border-blue-300 text-blue-700 hover:bg-blue-100">
+                  <UserCheck className="w-4 h-4 mr-1" />
+                  Inscrit
+                </Button>
+                <Button size="sm" variant="outline" disabled={isBulkLoading} onClick={() => handleBulkStatus('SELECTED')} className="border-green-300 text-green-700 hover:bg-green-100">
+                  <CheckCircle className="w-4 h-4 mr-1" />
+                  Selectionne
+                </Button>
+                <Button size="sm" variant="outline" disabled={isBulkLoading} onClick={() => handleBulkStatus('RESERVE')} className="border-purple-300 text-purple-700 hover:bg-purple-100">
+                  <Shield className="w-4 h-4 mr-1" />
+                  Remplacant
+                </Button>
+                <Button size="sm" variant="outline" disabled={isBulkLoading} onClick={() => handleBulkStatus('REJECTED')} className="border-orange-300 text-orange-700 hover:bg-orange-100">
+                  <XCircle className="w-4 h-4 mr-1" />
+                  Refuse
+                </Button>
+                <Button size="sm" variant="destructive" disabled={isBulkLoading} onClick={handleBulkDelete}>
+                  <Trash2 className="w-4 h-4 mr-1" />
+                  Supprimer
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Filters */}
       <Card>
         <CardContent className="pt-6">
@@ -287,7 +402,7 @@ export default function BallkidsPage() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
-                placeholder="Rechercher par nom, prénom ou email..."
+                placeholder="Rechercher par nom, prenom ou email..."
                 value={search}
                 onChange={(e) => {
                   setSearch(e.target.value)
@@ -306,9 +421,9 @@ export default function BallkidsPage() {
             >
               <option value="">Tous les statuts</option>
               <option value="REGISTERED">Inscrits</option>
-              <option value="SELECTED">Sélectionnés</option>
-              <option value="RESERVE">Remplaçants</option>
-              <option value="REJECTED">Refusés</option>
+              <option value="SELECTED">Selectionnes</option>
+              <option value="RESERVE">Remplacants</option>
+              <option value="REJECTED">Refuses</option>
             </select>
           </div>
         </CardContent>
@@ -321,10 +436,20 @@ export default function BallkidsPage() {
             <table className="w-full">
               <thead>
                 <tr className="border-b bg-gray-50">
+                  {isAdmin && (
+                    <th className="p-4 w-12">
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 rounded border-gray-300 cursor-pointer"
+                        checked={sortedBallkids.length > 0 && selectedIds.size === sortedBallkids.length}
+                        onChange={toggleSelectAll}
+                      />
+                    </th>
+                  )}
                   <th className="text-left p-4 font-medium w-12"></th>
                   <SortHeader column="lastName" label="Nom" />
-                  <SortHeader column="firstName" label="Prénom" />
-                  <SortHeader column="phone" label="Téléphone" />
+                  <SortHeader column="firstName" label="Prenom" />
+                  <SortHeader column="phone" label="Telephone" />
                   <SortHeader column="email" label="Email" />
                   <SortHeader column="average" label="Moyenne" />
                   <SortHeader column="status" label="Statut" />
@@ -333,29 +458,39 @@ export default function BallkidsPage() {
               <tbody>
                 {isLoading ? (
                   <tr>
-                    <td colSpan={7} className="p-8 text-center text-muted-foreground">
+                    <td colSpan={isAdmin ? 8 : 7} className="p-8 text-center text-muted-foreground">
                       Chargement...
                     </td>
                   </tr>
                 ) : sortedBallkids.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="p-8 text-center text-muted-foreground">
-                      Aucun ramasseur trouvé
+                    <td colSpan={isAdmin ? 8 : 7} className="p-8 text-center text-muted-foreground">
+                      Aucun ramasseur trouve
                     </td>
                   </tr>
                 ) : (
                   sortedBallkids.map((ballkid: any) => {
                     const scoreDisplay = getScoreDisplay(ballkid)
+                    const isSelected = selectedIds.has(ballkid.id)
                     return (
-                      <tr 
-                        key={ballkid.id} 
-                        className="border-b hover:bg-gray-50 cursor-pointer"
-                        onClick={() => window.location.href = `/ballkids/${ballkid.id}`}
+                      <tr
+                        key={ballkid.id}
+                        className={`border-b hover:bg-gray-50 cursor-pointer ${isSelected ? 'bg-blue-50' : ''}`}
                       >
-                        <td className="p-4">
+                        {isAdmin && (
+                          <td className="p-4" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              className="w-4 h-4 rounded border-gray-300 cursor-pointer"
+                              checked={isSelected}
+                              onChange={() => toggleSelect(ballkid.id)}
+                            />
+                          </td>
+                        )}
+                        <td className="p-4" onClick={() => window.location.href = `/ballkids/${ballkid.id}`}>
                           {ballkid.photoUrl ? (
-                            <img 
-                              src={ballkid.photoUrl} 
+                            <img
+                              src={ballkid.photoUrl}
                               alt={`${ballkid.firstName} ${ballkid.lastName}`}
                               className="w-10 h-10 rounded-full object-cover"
                             />
@@ -365,17 +500,17 @@ export default function BallkidsPage() {
                             </div>
                           )}
                         </td>
-                        <td className="p-4">
+                        <td className="p-4" onClick={() => window.location.href = `/ballkids/${ballkid.id}`}>
                           <span className="font-medium">{ballkid.lastName}</span>
                         </td>
-                        <td className="p-4">
+                        <td className="p-4" onClick={() => window.location.href = `/ballkids/${ballkid.id}`}>
                           <span>{ballkid.firstName}</span>
                         </td>
-                        <td className="p-4 text-sm">
+                        <td className="p-4 text-sm" onClick={() => window.location.href = `/ballkids/${ballkid.id}`}>
                           {ballkid.phone || <span className="text-muted-foreground">-</span>}
                         </td>
-                        <td className="p-4 text-sm">{ballkid.email}</td>
-                        <td className="p-4">
+                        <td className="p-4 text-sm" onClick={() => window.location.href = `/ballkids/${ballkid.id}`}>{ballkid.email}</td>
+                        <td className="p-4" onClick={() => window.location.href = `/ballkids/${ballkid.id}`}>
                           <div className="flex items-center gap-2">
                             {scoreDisplay ? (
                               <div className="flex items-center gap-1.5">
@@ -397,7 +532,7 @@ export default function BallkidsPage() {
                             )}
                           </div>
                         </td>
-                        <td className="p-4">
+                        <td className="p-4" onClick={() => window.location.href = `/ballkids/${ballkid.id}`}>
                           <span
                             className={`text-xs px-2 py-1 rounded-full ${
                               statusLabels[ballkid.status]?.color || 'bg-gray-100'

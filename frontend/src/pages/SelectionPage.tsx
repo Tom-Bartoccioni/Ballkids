@@ -127,17 +127,19 @@ export default function SelectionPage() {
   const scoreMutation = useMutation({
     mutationFn: ({ ballkidId, score }: { ballkidId: string, score: number }) => 
       api.post(`/selection/${tournament?.id}/score-simple`, { ballkidId, score }),
-    onSuccess: (_, variables) => {
+    onSuccess: async (_, variables) => {
       toast({ title: 'Note enregistrée' })
-      // Effacer le champ après succès
+      // Attendre le refetch avant de nettoyer le state
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['selection'] }),
+        queryClient.invalidateQueries({ queryKey: ['ballkids'] }),
+      ])
       setScores(prev => {
         const newScores = { ...prev }
         delete newScores[variables.ballkidId]
         return newScores
       })
       setEditingSelectionId(null)
-      queryClient.invalidateQueries({ queryKey: ['selection', 'ranking'] })
-      queryClient.invalidateQueries({ queryKey: ['ballkids'] })
     },
     onError: () => {
       toast({ variant: 'destructive', title: 'Erreur lors de l\'enregistrement' })
@@ -159,7 +161,7 @@ export default function SelectionPage() {
         title: 'Import terminé',
         description: `${data.imported} note(s) importée(s), ${errorCount} erreur(s)`,
       })
-      queryClient.invalidateQueries({ queryKey: ['selection', 'ranking'] })
+      queryClient.invalidateQueries({ queryKey: ['selection'] })
       queryClient.invalidateQueries({ queryKey: ['ballkids'] })
     },
     onError: (err: any) => {
@@ -557,10 +559,9 @@ export default function SelectionPage() {
                       const hasScore = !!existingScore
                       
                       return (
-                        <tr 
-                          key={ballkid.id} 
+                        <tr
+                          key={ballkid.id}
                           className="border-b hover:bg-gray-50"
-                          onClick={() => navigate(`/ballkids/${ballkid.id}?from=selection`)}
                         >
                           <td className="p-4">
                             <div className="flex items-center gap-3">
@@ -576,10 +577,9 @@ export default function SelectionPage() {
                                 </div>
                               )}
                               <div>
-                                <Link 
+                                <Link
                                   to={`/ballkids/${ballkid.id}?from=selection`}
                                   className="font-medium hover:text-primary hover:underline"
-                                  onClick={(e) => e.stopPropagation()}
                                 >
                                   {ballkid.lastName} {ballkid.firstName}
                                 </Link>
@@ -595,8 +595,7 @@ export default function SelectionPage() {
                                 <button
                                   type="button"
                                   className="inline-flex items-center gap-2 font-mono text-lg font-semibold text-emerald-700 hover:text-emerald-800"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
+                                  onClick={() => {
                                     setScores((prev) => ({
                                       ...prev,
                                       [ballkid.id]: existingScore.averageScore.toFixed(1),
@@ -616,14 +615,15 @@ export default function SelectionPage() {
                                     value={scores[ballkid.id] || ''}
                                     onChange={(e) => handleScoreChange(ballkid.id, e.target.value)}
                                     onKeyPress={(e) => handleKeyPress(e, ballkid.id)}
-                                    onClick={(e) => e.stopPropagation()}
                                     className="w-20 text-center"
                                   />
                                   <Button
                                     size="sm"
-                                    onClick={() => handleScoreSubmit(ballkid.id)}
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      handleScoreSubmit(ballkid.id)
+                                    }}
                                     disabled={!scores[ballkid.id] || scoreMutation.isPending}
-                                    onMouseDown={(e) => e.stopPropagation()}
                                   >
                                     <Save className="w-4 h-4" />
                                   </Button>
@@ -631,8 +631,7 @@ export default function SelectionPage() {
                                     <Button
                                       size="sm"
                                       variant="ghost"
-                                      onClick={(e) => {
-                                        e.stopPropagation()
+                                      onClick={() => {
                                         setEditingSelectionId(null)
                                         setScores((prev) => {
                                           const next = { ...prev }
@@ -667,8 +666,7 @@ export default function SelectionPage() {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={(e) => {
-                                  e.stopPropagation()
+                                onClick={() => {
                                   navigate(`/selection/score/${ballkid.id}`)
                                 }}
                               >

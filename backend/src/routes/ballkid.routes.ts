@@ -336,6 +336,53 @@ router.post('/:id/reject', authenticate, requireAdmin, async (req: AuthRequest, 
   }
 });
 
+// POST /api/ballkids/bulk/status - Changer le statut de plusieurs ramasseurs
+router.post('/bulk/status', authenticate, requireAdmin, async (req: AuthRequest, res, next) => {
+  try {
+    const { ids, status } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      throw new AppError('Liste d\'ids requise', 400);
+    }
+    if (!Object.values(BallkidStatus).includes(status)) {
+      throw new AppError('Statut invalide', 400);
+    }
+    const result = await prisma.ballkid.updateMany({
+      where: { id: { in: ids } },
+      data: { status },
+    });
+    res.json({ success: true, data: { count: result.count } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/ballkids/bulk/delete - Supprimer plusieurs ramasseurs
+router.post('/bulk/delete', authenticate, requireAdmin, async (req: AuthRequest, res, next) => {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      throw new AppError('Liste d\'ids requise', 400);
+    }
+    // Supprimer les photos associées
+    const ballkids = await prisma.ballkid.findMany({
+      where: { id: { in: ids } },
+      select: { photoUrl: true },
+    });
+    for (const bk of ballkids) {
+      if (bk.photoUrl) {
+        const photoPath = path.join(process.cwd(), bk.photoUrl);
+        if (fs.existsSync(photoPath)) fs.unlinkSync(photoPath);
+      }
+    }
+    const result = await prisma.ballkid.deleteMany({
+      where: { id: { in: ids } },
+    });
+    res.json({ success: true, data: { count: result.count } });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // DELETE /api/ballkids/:id - Supprimer un ramasseur
 router.delete('/:id', authenticate, requireAdmin, async (req: AuthRequest, res, next) => {
   try {
@@ -365,8 +412,17 @@ router.post(
 
       const records = await parseSpreadsheet(req.file.buffer, req.file.originalname);
 
+      // Charger les ramasseurs existants pour detection de doublons
+      const existingBallkids = await prisma.ballkid.findMany({
+        where: { tournamentId },
+        select: { email: true, firstName: true, lastName: true },
+      });
+      const existingEmails = new Set(existingBallkids.filter(b => b.email).map(b => b.email!.toLowerCase()));
+      const existingNames = new Set(existingBallkids.map(b => `${b.firstName.toLowerCase()}|${b.lastName.toLowerCase()}`));
+
       const created: any[] = [];
       const errors: any[] = [];
+      const skipped: any[] = [];
 
       for (const record of records) {
         try {
@@ -385,18 +441,54 @@ router.post(
             return '';
           };
 
-          // Mapping des colonnes CSV vers les champs BDD
+          const firstName = getField(['prenom', 'prénom', 'firstname', 'firstName', 'first name']).trim();
+          const lastName = getField(['nom', 'lastname', 'lastName', 'last name']).trim();
+          const email = getField(['email', 'mail']).trim().replace(/;/g, '');
+          const phone = getField(['telephone', 'téléphone', 'phone', 'telephone 1', 'telephone 2', 'telephone 3', 'tel', 'portable']).trim().replace(/;/g, '');
+
+          // Validation: nom et prenom obligatoires
+          if (!firstName || !lastName) {
+            errors.push({ record, error: 'Nom et prenom obligatoires' });
+            continue;
+          }
+          // Validation: email ou telephone, au moins un
+          if (!email && !phone) {
+            errors.push({ record, error: 'Email ou telephone obligatoire' });
+            continue;
+          }
+
+          // Detection de doublons par email
+          if (email && existingEmails.has(email.toLowerCase())) {
+            skipped.push({ record, reason: `Doublon email: ${email}` });
+            continue;
+          }
+          // Detection de doublons par nom+prenom
+          const nameKey = `${firstName.toLowerCase()}|${lastName.toLowerCase()}`;
+          if (existingNames.has(nameKey)) {
+            skipped.push({ record, reason: `Doublon nom: ${firstName} ${lastName}` });
+            continue;
+          }
+
+          // Ajouter aux sets pour eviter les doublons dans le meme fichier
+          if (email) existingEmails.add(email.toLowerCase());
+          existingNames.add(nameKey);
+
           const ballkid = await prisma.ballkid.create({
             data: {
               tournamentId,
-              firstName: getField(['prenom', 'prénom', 'firstname', 'firstName', 'first name']) || '',
-              lastName: getField(['nom', 'lastname', 'lastName', 'last name']) || '',
-              email: getField(['email', 'mail']) || '',
+              firstName,
+              lastName,
+              email: email || '',
               birthDate: parseBirthDate(getField(['dateNaissance', 'datenaissance', 'birthDate', 'birth date', 'age', 'date de naissance', 'ne(e)', 'nee'])),
               gender: mapGender(getField(['sexe', 'genre', 'gender'])),
-              phone: getField(['telephone', 'téléphone', 'phone', 'telephone 1', 'telephone 2', 'telephone 3', 'tel', 'portable']) || null,
+              phone: phone || null,
               address: getField(['adresse', 'address']) || null,
-              postalCode: getField(['codePostal', 'codepostal', 'postalCode', 'postal code', 'cp', 'code postal']) || null,
+              postalCode: (() => {
+                const cp = getField(['codePostal', 'codepostal', 'postalCode', 'postal code', 'cp', 'code postal']);
+                if (!cp) return null;
+                // Remettre le 0 initial si code postal francais a 4 chiffres
+                return cp.length === 4 ? '0' + cp : cp;
+              })(),
               city: getField(['ville', 'city']) || null,
               club: getField(['club']) || null,
               licenseNumber: getField(['licence', 'license', 'licenseNumber', 'numeroLicence', 'n° licence', 'numero licence']) || null,
@@ -417,7 +509,9 @@ router.post(
         success: true,
         data: {
           imported: created.length,
+          skipped: skipped.length,
           errors: errors.length,
+          skippedDetails: skipped,
           errorDetails: errors,
         },
       });
