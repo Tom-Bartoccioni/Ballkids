@@ -1,6 +1,13 @@
 #!/bin/sh
 set -e
 
+# Migrate old DB from container to volume (one-time migration)
+if [ -f /app/prisma/dev.db ] && [ ! -f /app/data/prod.db ]; then
+  echo "Migrating existing database to persistent volume..."
+  cp /app/prisma/dev.db /app/data/prod.db
+  echo "Database migrated to /app/data/prod.db"
+fi
+
 # Run prisma migrations
 npx prisma migrate deploy
 
