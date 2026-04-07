@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
 import { useToast } from '@/hooks/use-toast'
-import { Search, Plus, Upload, Download, ChevronLeft, ChevronRight, Clock, User, Star, Award, ArrowUpDown, ArrowUp, ArrowDown, Trash2, CheckCircle, XCircle, UserCheck, Shield, X } from 'lucide-react'
+import { Search, Plus, Upload, Download, ChevronLeft, ChevronRight, Clock, User, Star, Award, ArrowUpDown, ArrowUp, ArrowDown, Trash2, CheckCircle, XCircle, UserCheck, Shield, X, ImagePlus } from 'lucide-react'
 
 type SortKey = 'lastName' | 'firstName' | 'phone' | 'email' | 'average' | 'status'
 type SortOrder = 'asc' | 'desc'
@@ -38,7 +38,9 @@ export default function BallkidsPage() {
   const { toast } = useToast()
   const queryClient = useQueryClient()
   const importInputRef = useRef<HTMLInputElement | null>(null)
+  const photoImportRef = useRef<HTMLInputElement | null>(null)
   const [search, setSearch] = useState('')
+  const [photoResult, setPhotoResult] = useState<{ matched: number; notFound: number; duplicates: number; details: { matched: { filename: string; ballkidName: string }[]; notFound: string[]; duplicates: string[] } } | null>(null)
   const [page, setPage] = useState(1)
   const [statusFilter, setStatusFilter] = useState('')
   const [sortKey, setSortKey] = useState<SortKey>('lastName')
@@ -283,6 +285,30 @@ export default function BallkidsPage() {
     event.target.value = ''
   }
 
+  const [uploadingPhotos, setUploadingPhotos] = useState(false)
+
+  const handleBulkPhotoImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files
+    if (!files || files.length === 0) return
+    setUploadingPhotos(true)
+    try {
+      const formData = new FormData()
+      for (let i = 0; i < files.length; i++) {
+        formData.append('photos', files[i])
+      }
+      const res = await api.post('/ballkids/photos/bulk', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      setPhotoResult(res.data.data)
+      queryClient.invalidateQueries({ queryKey: ['ballkids'] })
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Erreur', description: err.response?.data?.message || 'Import photos echoue' })
+    } finally {
+      setUploadingPhotos(false)
+      event.target.value = ''
+    }
+  }
+
   const isBulkLoading = bulkStatusMutation.isPending || bulkDeleteMutation.isPending
 
   return (
@@ -343,6 +369,22 @@ export default function BallkidsPage() {
               >
                 <Upload className="w-4 h-4 mr-2" />
                 {importMutation.isPending ? 'Import...' : 'Importer'}
+              </Button>
+              <input
+                ref={photoImportRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                multiple
+                className="hidden"
+                onChange={handleBulkPhotoImport}
+              />
+              <Button
+                variant="outline"
+                onClick={() => photoImportRef.current?.click()}
+                disabled={uploadingPhotos}
+              >
+                <ImagePlus className="w-4 h-4 mr-2" />
+                {uploadingPhotos ? 'Upload...' : 'Photos'}
               </Button>
             </>
           )}
@@ -577,6 +619,74 @@ export default function BallkidsPage() {
           )}
         </CardContent>
       </Card>
+      {/* Modal résultat import photos */}
+      {photoResult && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full max-h-[80vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold">Resultat de l'import photos</h3>
+                <button onClick={() => setPhotoResult(null)} className="text-gray-400 hover:text-gray-600">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-3 mb-4">
+                <div className="flex items-center gap-2 text-green-700 bg-green-50 p-3 rounded-lg">
+                  <CheckCircle className="w-5 h-5" />
+                  <span className="font-medium">{photoResult.matched} photo{photoResult.matched > 1 ? 's' : ''} associee{photoResult.matched > 1 ? 's' : ''}</span>
+                </div>
+                {photoResult.notFound > 0 && (
+                  <div className="flex items-center gap-2 text-red-700 bg-red-50 p-3 rounded-lg">
+                    <XCircle className="w-5 h-5" />
+                    <span className="font-medium">{photoResult.notFound} non trouvee{photoResult.notFound > 1 ? 's' : ''}</span>
+                  </div>
+                )}
+                {photoResult.duplicates > 0 && (
+                  <div className="flex items-center gap-2 text-orange-700 bg-orange-50 p-3 rounded-lg">
+                    <XCircle className="w-5 h-5" />
+                    <span className="font-medium">{photoResult.duplicates} doublon{photoResult.duplicates > 1 ? 's' : ''}</span>
+                  </div>
+                )}
+              </div>
+
+              {photoResult.details.matched.length > 0 && (
+                <div className="mb-3">
+                  <p className="text-sm font-medium text-gray-600 mb-1">Associees :</p>
+                  <ul className="text-sm text-gray-700 space-y-1">
+                    {photoResult.details.matched.map((m, i) => (
+                      <li key={i} className="flex items-center gap-2">
+                        <CheckCircle className="w-3 h-3 text-green-500 flex-shrink-0" />
+                        <span className="truncate">{m.filename}</span>
+                        <span className="text-gray-400">→</span>
+                        <span className="font-medium">{m.ballkidName}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {photoResult.details.notFound.length > 0 && (
+                <div className="mb-3">
+                  <p className="text-sm font-medium text-gray-600 mb-1">Non trouvees (verifier le nom du fichier) :</p>
+                  <ul className="text-sm text-red-600 space-y-1">
+                    {photoResult.details.notFound.map((f, i) => (
+                      <li key={i} className="flex items-center gap-2">
+                        <XCircle className="w-3 h-3 flex-shrink-0" />
+                        <span className="truncate">{f}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <div className="mt-4 pt-3 border-t">
+                <p className="text-xs text-gray-400">Format attendu : Nom Prenom.jpg ou Prenom Nom.jpg (separateur : espace, tiret ou underscore)</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

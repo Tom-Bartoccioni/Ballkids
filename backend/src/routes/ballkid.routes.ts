@@ -540,6 +540,95 @@ function mapGender(value: string): string {
   return Gender.OTHER;
 }
 
+// POST /api/ballkids/photos/bulk - Import photos en masse (MUST be before /:id/photo)
+router.post(
+  '/photos/bulk',
+  authenticate,
+  requireAdmin,
+  uploadPhoto.array('photos', 200),
+  async (req: AuthRequest, res, next) => {
+    try {
+      const files = req.files as Express.Multer.File[];
+      if (!files || files.length === 0) {
+        throw new AppError('Aucune photo fournie', 400);
+      }
+
+      // Récupérer tous les ramasseurs du tournoi actif
+      const tournament = await prisma.tournament.findFirst({ where: { isActive: true } });
+      if (!tournament) {
+        files.forEach(f => fs.unlinkSync(f.path));
+        throw new AppError('Aucun tournoi actif', 404);
+      }
+
+      const ballkids = await prisma.ballkid.findMany({
+        where: { tournamentId: tournament.id },
+        select: { id: true, firstName: true, lastName: true, photoUrl: true },
+      });
+
+      // Créer un index normalisé pour le matching
+      const ballkidIndex = new Map<string, typeof ballkids[0]>();
+      for (const bk of ballkids) {
+        const key1 = normalizeKey(`${bk.lastName} ${bk.firstName}`);
+        const key2 = normalizeKey(`${bk.firstName} ${bk.lastName}`);
+        if (!ballkidIndex.has(key1)) ballkidIndex.set(key1, bk);
+        if (!ballkidIndex.has(key2)) ballkidIndex.set(key2, bk);
+      }
+
+      const matched: { filename: string; ballkidName: string }[] = [];
+      const notFound: string[] = [];
+      const duplicates: string[] = [];
+      const alreadyAssigned = new Set<string>();
+
+      for (const file of files) {
+        const baseName = path.basename(file.originalname, path.extname(file.originalname));
+        const normalized = normalizeKey(baseName.replace(/[_\-]/g, ' '));
+
+        const bk = ballkidIndex.get(normalized);
+
+        if (!bk) {
+          notFound.push(file.originalname);
+          fs.unlinkSync(file.path);
+          continue;
+        }
+
+        if (alreadyAssigned.has(bk.id)) {
+          duplicates.push(file.originalname);
+          fs.unlinkSync(file.path);
+          continue;
+        }
+
+        if (bk.photoUrl) {
+          const oldPath = path.join(process.cwd(), bk.photoUrl);
+          if (fs.existsSync(oldPath)) {
+            fs.unlinkSync(oldPath);
+          }
+        }
+
+        const photoUrl = `/uploads/photos/${file.filename}`;
+        await prisma.ballkid.update({
+          where: { id: bk.id },
+          data: { photoUrl },
+        });
+
+        alreadyAssigned.add(bk.id);
+        matched.push({ filename: file.originalname, ballkidName: `${bk.lastName} ${bk.firstName}` });
+      }
+
+      res.json({
+        success: true,
+        data: {
+          matched: matched.length,
+          notFound: notFound.length,
+          duplicates: duplicates.length,
+          details: { matched, notFound, duplicates },
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 // POST /api/ballkids/:id/photo - Upload photo
 router.post(
   '/:id/photo',
@@ -553,16 +642,13 @@ router.post(
       }
 
       const { id } = req.params;
-      
-      // Vérifier que le ramasseur existe
+
       const existing = await prisma.ballkid.findUnique({ where: { id } });
       if (!existing) {
-        // Supprimer le fichier uploadé
         fs.unlinkSync(req.file.path);
         throw new AppError('Ramasseur non trouvé', 404);
       }
 
-      // Supprimer l'ancienne photo si elle existe
       if (existing.photoUrl) {
         const oldPath = path.join(process.cwd(), existing.photoUrl);
         if (fs.existsSync(oldPath)) {
@@ -570,7 +656,6 @@ router.post(
         }
       }
 
-      // Mettre à jour avec le nouveau chemin
       const photoUrl = `/uploads/photos/${req.file.filename}`;
       const ballkid = await prisma.ballkid.update({
         where: { id },
