@@ -23,7 +23,8 @@ model User {
   updatedAt DateTime @updatedAt
 
   // Relations
-  coachProfile     Coach?
+  // Un utilisateur peut etre coach sur plusieurs annees (un Coach par tournoi)
+  coachProfiles    Coach[]
   selectionScores  SelectionScore[]
   trainingScores   TrainingScore[]
   tournamentScores TournamentScore[]
@@ -343,7 +344,7 @@ model TeamAssignment {
 
 model Coach {
   id           String   @id @default(cuid())
-  userId       String   @unique
+  userId       String
   tournamentId String
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -355,6 +356,8 @@ model Coach {
   availabilities        CoachAvailability[]
   plannedAvailabilities CoachPlannedAvailability[]
 
+  // Un utilisateur = au plus un profil coach par tournoi (mais plusieurs annees possibles)
+  @@unique([userId, tournamentId])
   @@map("coaches")
 }
 

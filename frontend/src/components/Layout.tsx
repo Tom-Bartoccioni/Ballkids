@@ -42,7 +42,7 @@ export default function Layout() {
   const [newTournament, setNewTournament] = useState({ name: '', year: new Date().getFullYear(), startDate: '', endDate: '' })
   // Reprise des données d'un tournoi précédent
   const [cloneSource, setCloneSource] = useState('')
-  const defaultCloneOptions = { ballkids: true, criteria: true, teams: true, days: true }
+  const defaultCloneOptions = { ballkids: true, criteria: true, teams: true, days: true, coaches: true }
   const [cloneOptions, setCloneOptions] = useState(defaultCloneOptions)
 
   // Fetch all tournaments
@@ -88,7 +88,7 @@ export default function Layout() {
           trainingSetup: cloneOptions.criteria,
           teams: cloneOptions.teams,
           days: cloneOptions.days,
-          coaches: false,
+          coaches: cloneOptions.coaches,
         }
       }
       const res = await api.post('/tournaments', payload)
@@ -106,6 +106,7 @@ export default function Layout() {
         if (cloned.trainingSessions != null) parts.push(`${cloned.trainingSessions} séance(s) de formation`)
         if (cloned.teams != null) parts.push(`${cloned.teams} équipe(s)`)
         if (cloned.days != null) parts.push(`${cloned.days} jour(s)`)
+        if (cloned.coaches != null) parts.push(`${cloned.coaches} coach(s)`)
         if (parts.length) description = `${parts.join(', ')} repris.`
       }
       toast({ title: 'Tournoi créé', description })
@@ -278,6 +279,7 @@ export default function Layout() {
                                   { key: 'criteria', label: 'Critères de sélection/formation' },
                                   { key: 'teams', label: 'Équipes' },
                                   { key: 'days', label: 'Jours de tournoi' },
+                                  { key: 'coaches', label: 'Coachs' },
                                 ].map((opt) => (
                                   <label
                                     key={opt.key}

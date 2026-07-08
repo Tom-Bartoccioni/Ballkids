@@ -222,13 +222,10 @@ export async function cloneTournamentData(
 
   // ------------------------------------------------------------------
   // COACHS
-  // ATTENTION : dans le schéma actuel, Coach.userId est @unique de façon
-  // GLOBALE (pas par tournoi). Le tournoi source n'étant pas supprimé, ses
-  // lignes Coach existent toujours → on ne peut pas recréer un Coach avec le
-  // même userId sans violer la contrainte. On ne crée donc une ligne que si
-  // AUCUN Coach n'existe déjà pour ce user (sinon on saute, sans planter la
-  // transaction). Reprendre réellement les coachs d'une année sur l'autre
-  // nécessiterait de passer la contrainte en @@unique([userId, tournamentId]).
+  // La contrainte est @@unique([userId, tournamentId]) : un utilisateur peut
+  // etre coach sur plusieurs annees. On recree donc une ligne Coach pointant
+  // vers le meme userId pour le tournoi cible (sans reprendre les
+  // disponibilites ni les affectations liees a l'ancienne annee).
   // ------------------------------------------------------------------
   if (options.coaches) {
     const sourceCoaches = await tx.coach.findMany({
@@ -236,10 +233,6 @@ export async function cloneTournamentData(
     });
 
     for (const coach of sourceCoaches) {
-      const existing = await tx.coach.findUnique({
-        where: { userId: coach.userId },
-      });
-      if (existing) continue; // userId déjà rattaché à un Coach : on ne peut pas dupliquer
       await tx.coach.create({
         data: {
           userId: coach.userId,

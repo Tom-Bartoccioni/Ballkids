@@ -5,6 +5,7 @@ import { body, validationResult } from 'express-validator';
 import prisma from '../lib/prisma.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
+import { blockInDemo } from '../middleware/demoGuard.js';
 
 const router = Router();
 
@@ -27,7 +28,11 @@ router.post(
       const user = await prisma.user.findUnique({
         where: { email },
         include: {
-          coachProfile: true,
+          // Profil coach du tournoi actif (un coach peut avoir un profil par annee)
+          coachProfiles: {
+            where: { tournament: { isActive: true } },
+            take: 1,
+          },
         },
       });
 
@@ -60,7 +65,7 @@ router.post(
             firstName: user.firstName,
             lastName: user.lastName,
             role: user.role,
-            coachProfile: user.coachProfile || null,
+            coachProfile: user.coachProfiles[0] || null,
           },
         },
       });
@@ -155,10 +160,13 @@ router.get('/me', authenticate, async (req: AuthRequest, res: any, next: any) =>
         firstName: true,
         lastName: true,
         role: true,
-        coachProfile: {
+        // Profil coach du tournoi actif uniquement
+        coachProfiles: {
+          where: { tournament: { isActive: true } },
           include: {
             tournament: true,
           },
+          take: 1,
         },
       },
     });
@@ -167,9 +175,11 @@ router.get('/me', authenticate, async (req: AuthRequest, res: any, next: any) =>
       throw new AppError('Utilisateur non trouvé', 404);
     }
 
+    // On expose coachProfile (au singulier) pour ne pas changer le contrat cote frontend
+    const { coachProfiles, ...rest } = user;
     res.json({
       success: true,
-      data: { user },
+      data: { user: { ...rest, coachProfile: coachProfiles[0] || null } },
     });
   } catch (error) {
     next(error);
@@ -180,6 +190,7 @@ router.get('/me', authenticate, async (req: AuthRequest, res: any, next: any) =>
 router.put(
   '/password',
   authenticate,
+  blockInDemo,
   [
     body('currentPassword').notEmpty().withMessage('Mot de passe actuel requis'),
     body('newPassword')

@@ -8,17 +8,14 @@ import { cloneTournamentData, CloneOptions } from '../lib/tournamentClone.js';
 
 const router = Router();
 
-// Options de clonage par défaut : on reprend tout du tournoi source.
-// coaches = false : la reprise des coachs n'est pas supportée tant que
-// Coach.userId reste @unique global (un user = un seul tournoi). Voir la lib
-// tournamentClone pour le détail.
+// Options de clonage par défaut : on reprend tout du tournoi source
 const DEFAULT_CLONE_OPTIONS: CloneOptions = {
   ballkids: true,
   selectionCriteria: true,
   trainingSetup: true,
   teams: true,
   days: true,
-  coaches: false,
+  coaches: true,
 };
 
 // GET /api/tournaments - Liste des tournois

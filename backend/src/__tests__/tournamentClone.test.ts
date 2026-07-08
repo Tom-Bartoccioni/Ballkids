@@ -140,6 +140,7 @@ describe('POST /api/tournaments - reprise année précédente', () => {
   let sourceId: string;
   let sourceSelectionSessionId: string;
   let sourceBallkidIds: string[] = [];
+  let sourceCoachUserId: string;
   const SOURCE_BALLKID_COUNT = 3;
 
   beforeAll(async () => {
@@ -210,6 +211,13 @@ describe('POST /api/tournaments - reprise année précédente', () => {
           ],
         },
       },
+    });
+
+    // Un coach sur la source : DOIT être repris (nouveau profil pour ce user sur le tournoi cible)
+    const sourceCoachUser = await prisma.user.findUnique({ where: { email: 'coach@ballkid.test' } });
+    sourceCoachUserId = sourceCoachUser!.id;
+    await prisma.coach.create({
+      data: { userId: sourceCoachUserId, tournamentId: sourceId },
     });
   });
 
@@ -304,6 +312,15 @@ describe('POST /api/tournaments - reprise année précédente', () => {
       where: { selectionSessionId: sourceSelectionSessionId },
     });
     expect(sourceCriteria).toBe(2);
+
+    // --- Coach repris : un nouveau profil pour le même user sur le nouveau tournoi ---
+    const newCoaches = await prisma.coach.findMany({ where: { tournamentId: newId } });
+    expect(newCoaches.length).toBe(1);
+    expect(newCoaches[0].userId).toBe(sourceCoachUserId);
+    // Le coach de la source existe toujours (historique conservé, profil distinct)
+    const sourceCoaches = await prisma.coach.findMany({ where: { tournamentId: sourceId } });
+    expect(sourceCoaches.length).toBe(1);
+    expect(sourceCoaches[0].id).not.toBe(newCoaches[0].id);
   });
 });
 
