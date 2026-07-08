@@ -130,19 +130,16 @@ export default function SelectionScorePage() {
     }
   }
 
-  // Calculate total score based on weights
+  // Somme brute des notes saisies (ponderees par le poids du critere, 1 par defaut) — pas de moyenne
   const calculateTotal = () => {
     let total = 0
-    let totalWeight = 0
     criteria.forEach((c: any) => {
       if (!c.isCalculated) {
         const score = scores[c.id] || 0
-        const normalizedScore = (score / c.maxScore) * 20 // Normalize to 0-20
-        total += normalizedScore * c.weight
-        totalWeight += c.weight
+        total += score * c.weight
       }
     })
-    return totalWeight > 0 ? total / totalWeight : 0
+    return total
   }
 
   const totalScore = calculateTotal()

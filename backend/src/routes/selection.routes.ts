@@ -205,22 +205,17 @@ router.post(
         throw new AppError('Session de sélection non trouvée', 404);
       }
 
-      // Calculer le total (moyenne pondérée normalisée sur 20)
+      // Calculer le total : somme brute des notes saisies (ponderees par le poids du critere).
+      // Poids par defaut = 1, donc il s'agit d'une simple addition des notes ; pas de moyenne.
       let totalScore = 0;
-      let totalWeight = 0;
       const criteriaMap = new Map(session.criteria.map((c) => [c.id, c]));
 
       for (const [criteriaId, value] of Object.entries(scores)) {
         const criteria = criteriaMap.get(criteriaId);
         if (criteria && !criteria.isCalculated) {
-          const normalizedScore = ((value as number) / criteria.maxScore) * 20;
-          totalScore += normalizedScore * criteria.weight;
-          totalWeight += criteria.weight;
+          totalScore += (value as number) * criteria.weight;
         }
       }
-      
-      // Calculer la moyenne pondérée
-      totalScore = totalWeight > 0 ? totalScore / totalWeight : 0;
 
       // Upsert du score
       const selectionScore = await prisma.selectionScore.upsert({

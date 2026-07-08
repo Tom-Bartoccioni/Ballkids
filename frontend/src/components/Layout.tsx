@@ -3,6 +3,7 @@ import { Link, Outlet, useLocation } from 'react-router-dom'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from '@/components/ui/button'
+import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
 import {
   Users,
@@ -34,10 +35,15 @@ export default function Layout() {
   const { user, logout, isAdmin } = useAuth()
   const location = useLocation()
   const queryClient = useQueryClient()
+  const { toast } = useToast()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [tournamentDropdownOpen, setTournamentDropdownOpen] = useState(false)
   const [showNewTournament, setShowNewTournament] = useState(false)
   const [newTournament, setNewTournament] = useState({ name: '', year: new Date().getFullYear(), startDate: '', endDate: '' })
+  // Reprise des données d'un tournoi précédent
+  const [cloneSource, setCloneSource] = useState('')
+  const defaultCloneOptions = { ballkids: true, criteria: true, teams: true, days: true, coaches: true }
+  const [cloneOptions, setCloneOptions] = useState(defaultCloneOptions)
 
   // Fetch all tournaments
   const { data: tournamentsData } = useQuery({
@@ -71,14 +77,47 @@ export default function Layout() {
 
   // Create tournament
   const createMutation = useMutation({
-    mutationFn: async (data: typeof newTournament) => {
-      await api.post('/tournaments', data)
+    mutationFn: async () => {
+      const payload: any = { ...newTournament }
+      if (cloneSource) {
+        payload.copyFromTournamentId = cloneSource
+        payload.cloneOptions = {
+          ballkids: cloneOptions.ballkids,
+          // La case « Critères de sélection/formation » pilote les deux
+          selectionCriteria: cloneOptions.criteria,
+          trainingSetup: cloneOptions.criteria,
+          teams: cloneOptions.teams,
+          days: cloneOptions.days,
+          coaches: cloneOptions.coaches,
+        }
+      }
+      const res = await api.post('/tournaments', payload)
+      return res.data
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries()
+      // Récapitulatif de reprise si des données ont été clonées
+      const cloned = data?.data?.cloneSummary
+      let description = 'Le nouveau tournoi est prêt.'
+      if (cloneSource && cloned) {
+        const parts: string[] = []
+        if (cloned.ballkids != null) parts.push(`${cloned.ballkids} ramasseur(s)`)
+        if (cloned.selectionCriteria != null) parts.push(`${cloned.selectionCriteria} critère(s) de sélection`)
+        if (cloned.trainingSessions != null) parts.push(`${cloned.trainingSessions} séance(s) de formation`)
+        if (cloned.teams != null) parts.push(`${cloned.teams} équipe(s)`)
+        if (cloned.days != null) parts.push(`${cloned.days} jour(s)`)
+        if (cloned.coaches != null) parts.push(`${cloned.coaches} coach(s)`)
+        if (parts.length) description = `${parts.join(', ')} repris.`
+      }
+      toast({ title: 'Tournoi créé', description })
       setShowNewTournament(false)
       setNewTournament({ name: '', year: new Date().getFullYear(), startDate: '', endDate: '' })
+      setCloneSource('')
+      setCloneOptions(defaultCloneOptions)
       setTournamentDropdownOpen(false)
+    },
+    onError: (err: any) => {
+      toast({ variant: 'destructive', title: 'Erreur', description: err.response?.data?.message || 'Échec de la création du tournoi' })
     },
   })
 
@@ -97,8 +136,17 @@ export default function Layout() {
 
   const filteredNav = navigation.filter((item) => !item.adminOnly || isAdmin)
 
+  const isDemoMode = import.meta.env.VITE_DEMO_MODE === 'true'
+
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Bandeau mode démonstration */}
+      {isDemoMode && (
+        <div className="fixed top-0 inset-x-0 z-[60] h-10 flex items-center justify-center bg-amber-500 text-white text-center text-sm font-medium px-4 shadow">
+          🔶 Mode démonstration — les données sont réinitialisées automatiquement chaque nuit.
+        </div>
+      )}
+
       {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
         <div
@@ -111,7 +159,8 @@ export default function Layout() {
       <aside
         className={cn(
           'fixed inset-y-0 left-0 z-50 w-64 bg-white border-r transform transition-transform duration-200 lg:translate-x-0',
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full',
+          isDemoMode && 'top-10'
         )}
       >
         <div className="flex flex-col h-full">
@@ -205,16 +254,66 @@ export default function Layout() {
                           onChange={(e) => setNewTournament({ ...newTournament, endDate: e.target.value })}
                           className="w-full px-2 py-1.5 text-sm border rounded"
                         />
+                        {/* Reprendre les données d'une année précédente */}
+                        {tournaments.length > 0 && (
+                          <div className="space-y-2 pt-2 border-t">
+                            <label className="block text-xs font-medium text-gray-600">
+                              Reprendre les données de…
+                            </label>
+                            <select
+                              value={cloneSource}
+                              onChange={(e) => setCloneSource(e.target.value)}
+                              className="w-full px-2 py-1.5 text-sm border rounded bg-white"
+                            >
+                              <option value="">Partir de zéro</option>
+                              {tournaments.map((t: any) => (
+                                <option key={t.id} value={t.id}>
+                                  {t.name} ({t.year})
+                                </option>
+                              ))}
+                            </select>
+                            {cloneSource && (
+                              <div className="space-y-1.5 pl-0.5">
+                                {[
+                                  { key: 'ballkids', label: 'Ramasseurs' },
+                                  { key: 'criteria', label: 'Critères de sélection/formation' },
+                                  { key: 'teams', label: 'Équipes' },
+                                  { key: 'days', label: 'Jours de tournoi' },
+                                  { key: 'coaches', label: 'Coachs' },
+                                ].map((opt) => (
+                                  <label
+                                    key={opt.key}
+                                    className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={cloneOptions[opt.key as keyof typeof cloneOptions]}
+                                      onChange={(e) =>
+                                        setCloneOptions({ ...cloneOptions, [opt.key]: e.target.checked })
+                                      }
+                                      className="rounded border-gray-300"
+                                    />
+                                    {opt.label}
+                                  </label>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
                         <div className="flex gap-2">
                           <button
-                            onClick={() => createMutation.mutate(newTournament)}
+                            onClick={() => createMutation.mutate()}
                             disabled={!newTournament.name || !newTournament.startDate || !newTournament.endDate || createMutation.isPending}
                             className="flex-1 px-2 py-1.5 text-sm bg-primary text-white rounded hover:bg-primary/90 disabled:opacity-50"
                           >
                             {createMutation.isPending ? '...' : 'Créer'}
                           </button>
                           <button
-                            onClick={() => setShowNewTournament(false)}
+                            onClick={() => {
+                              setShowNewTournament(false)
+                              setCloneSource('')
+                              setCloneOptions(defaultCloneOptions)
+                            }}
                             className="px-2 py-1.5 text-sm border rounded hover:bg-gray-50"
                           >
                             Annuler
@@ -300,9 +399,12 @@ export default function Layout() {
       </aside>
 
       {/* Main content */}
-      <div className="lg:pl-64">
+      <div className={cn('lg:pl-64', isDemoMode && 'pt-10')}>
         {/* Mobile header */}
-        <header className="sticky top-0 z-30 flex items-center h-16 px-4 bg-white border-b lg:hidden">
+        <header className={cn(
+          'sticky z-30 flex items-center h-16 px-4 bg-white border-b lg:hidden',
+          isDemoMode ? 'top-10' : 'top-0'
+        )}>
           <button
             className="p-2 hover:bg-gray-100 rounded"
             onClick={() => setSidebarOpen(true)}

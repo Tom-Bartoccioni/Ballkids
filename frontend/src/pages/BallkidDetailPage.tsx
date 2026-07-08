@@ -355,6 +355,14 @@ export default function BallkidDetailPage() {
       })()
   ).sort((a: any, b: any) => a.dayNumber - b.dayNumber)
 
+  // Moyenne tournoi = moyenne des moyennes par jour (comme l'endpoint liste GET /api/ballkids)
+  const tournamentDayAverages = tournamentNotes
+    .filter((d: any) => d.scores.length > 0)
+    .map((d: any) => d.scores.reduce((a: number, b: number) => a + b, 0) / d.scores.length)
+  const tournamentAvg = tournamentDayAverages.length > 0
+    ? tournamentDayAverages.reduce((a: number, b: number) => a + b, 0) / tournamentDayAverages.length
+    : null
+
   const handleSelectionSubmit = () => {
     const value = selectionInput.trim()
     if (!value) return
@@ -864,7 +872,14 @@ export default function BallkidDetailPage() {
           <CardContent>
             {(isAdmin || tournamentNotes.length > 0) ? (
               tournamentNotes.length > 0 ? (
-                <div className="space-y-2">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Moyenne</span>
+                    <span className="text-2xl font-bold text-green-600">
+                      {tournamentAvg != null ? `${tournamentAvg.toFixed(1)}/20` : '-'}
+                    </span>
+                  </div>
+                  <div className="space-y-2 pt-2 border-t">
                   {tournamentNotes.map((day: any) => {
                     const avg = day.scores.length
                       ? day.scores.reduce((a: number, b: number) => a + b, 0) / day.scores.length
@@ -1001,6 +1016,7 @@ export default function BallkidDetailPage() {
                       </div>
                     )
                   })}
+                  </div>
                 </div>
               ) : (
                 <p className="text-muted-foreground italic text-center py-4">

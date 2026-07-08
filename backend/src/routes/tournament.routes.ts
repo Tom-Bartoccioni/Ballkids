@@ -3,8 +3,20 @@ import { body, validationResult } from 'express-validator';
 import prisma from '../lib/prisma.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { authenticate, requireAdmin, AuthRequest } from '../middleware/auth.js';
+import { initializeTournamentDefaults } from '../lib/tournamentInit.js';
+import { cloneTournamentData, CloneOptions } from '../lib/tournamentClone.js';
 
 const router = Router();
+
+// Options de clonage par défaut : on reprend tout du tournoi source
+const DEFAULT_CLONE_OPTIONS: CloneOptions = {
+  ballkids: true,
+  selectionCriteria: true,
+  trainingSetup: true,
+  teams: true,
+  days: true,
+  coaches: true,
+};
 
 // GET /api/tournaments - Liste des tournois
 router.get('/', authenticate, async (req, res, next) => {
@@ -77,6 +89,11 @@ router.post(
     body('year').isInt().withMessage('Année invalide'),
     body('startDate').isISO8601().withMessage('Date de début invalide'),
     body('endDate').isISO8601().withMessage('Date de fin invalide'),
+    body('copyFromTournamentId')
+      .optional()
+      .isString()
+      .withMessage('Identifiant du tournoi source invalide'),
+    body('cloneOptions').optional().isObject().withMessage('Options de clonage invalides'),
   ],
   async (req: AuthRequest, res: any, next: any) => {
     try {
@@ -85,22 +102,52 @@ router.post(
         throw new AppError(errors.array()[0].msg, 400);
       }
 
-      const { name, year, startDate, endDate } = req.body;
+      const { name, year, startDate, endDate, copyFromTournamentId, cloneOptions } = req.body;
+
+      const parsedStartDate = new Date(startDate);
 
       // Only auto-activate if no other tournament is active
       const hasActive = await prisma.tournament.findFirst({ where: { isActive: true } });
 
-      const tournament = await prisma.tournament.create({
-        data: {
-          name,
-          year,
-          startDate: new Date(startDate),
-          endDate: new Date(endDate),
-          isActive: !hasActive,
-        },
+      // Création + initialisation/clonage dans une seule transaction
+      const { tournament, cloneSummary } = await prisma.$transaction(async (tx) => {
+        const tournament = await tx.tournament.create({
+          data: {
+            name,
+            year,
+            startDate: parsedStartDate,
+            endDate: new Date(endDate),
+            isActive: !hasActive,
+          },
+        });
+
+        let cloneSummary = null;
+
+        if (copyFromTournamentId) {
+          // Reprise des données d'un tournoi précédent
+          const source = await tx.tournament.findUnique({
+            where: { id: copyFromTournamentId },
+          });
+          if (!source) {
+            throw new AppError('Tournoi source non trouvé', 404);
+          }
+
+          cloneSummary = await cloneTournamentData(
+            tx,
+            copyFromTournamentId,
+            tournament.id,
+            cloneOptions ?? DEFAULT_CLONE_OPTIONS,
+            parsedStartDate
+          );
+        } else {
+          // Nouveau tournoi : initialiser la structure par défaut
+          await initializeTournamentDefaults(tx, tournament.id, parsedStartDate);
+        }
+
+        return { tournament, cloneSummary };
       });
 
-      res.status(201).json({ success: true, data: { tournament } });
+      res.status(201).json({ success: true, data: { tournament, cloneSummary } });
     } catch (error) {
       next(error);
     }

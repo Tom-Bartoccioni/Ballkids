@@ -248,6 +248,7 @@ export default function BallkidsPage() {
     },
     onSuccess: (data) => {
       const parts = [`${data.imported} importe(s)`]
+      if (data.updated > 0) parts.push(`${data.updated} mis a jour`)
       if (data.skipped > 0) parts.push(`${data.skipped} doublon(s) ignore(s)`)
       if (data.errors > 0) parts.push(`${data.errors} erreur(s)`)
       toast({

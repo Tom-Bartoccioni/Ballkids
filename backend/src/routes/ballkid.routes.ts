@@ -51,15 +51,23 @@ const storagePhoto = multer.diskStorage({
   }
 });
 
+// En mode démonstration, on durcit les limites d'upload (défense en profondeur
+// contre l'abus de stockage sur une instance publique) : JPG/PNG uniquement, 2 Mo.
+const isDemoMode = process.env.DEMO_MODE === 'true';
+const allowedPhotoTypes = isDemoMode
+  ? ['image/jpeg', 'image/png']
+  : ['image/jpeg', 'image/png', 'image/webp'];
+const maxPhotoSize = isDemoMode ? 2 * 1024 * 1024 : 5 * 1024 * 1024;
+
 const uploadPhoto = multer({
   storage: storagePhoto,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB max
+  limits: { fileSize: maxPhotoSize },
   fileFilter: (req, file, cb) => {
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
-    if (allowedTypes.includes(file.mimetype)) {
+    if (allowedPhotoTypes.includes(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error('Type de fichier non autorisé. Utilisez JPG, PNG ou WebP.'));
+      const formats = isDemoMode ? 'JPG ou PNG' : 'JPG, PNG ou WebP';
+      cb(new Error(`Type de fichier non autorisé. Utilisez ${formats}.`));
     }
   }
 });
@@ -412,15 +420,21 @@ router.post(
 
       const records = await parseSpreadsheet(req.file.buffer, req.file.originalname);
 
-      // Charger les ramasseurs existants pour detection de doublons
+      // Charger les ramasseurs existants pour detection de doublons (avec id pour permettre la mise a jour)
       const existingBallkids = await prisma.ballkid.findMany({
         where: { tournamentId },
-        select: { email: true, firstName: true, lastName: true },
+        select: { id: true, email: true, firstName: true, lastName: true },
       });
-      const existingEmails = new Set(existingBallkids.filter(b => b.email).map(b => b.email!.toLowerCase()));
-      const existingNames = new Set(existingBallkids.map(b => `${b.firstName.toLowerCase()}|${b.lastName.toLowerCase()}`));
+      // Maps email->id et nom|prenom->id : permettent de retrouver l'enregistrement a mettre a jour lors d'un re-import
+      const emailToId = new Map<string, string>();
+      const nameToId = new Map<string, string>();
+      for (const b of existingBallkids) {
+        if (b.email) emailToId.set(b.email.toLowerCase(), b.id);
+        nameToId.set(`${b.firstName.toLowerCase()}|${b.lastName.toLowerCase()}`, b.id);
+      }
 
       const created: any[] = [];
+      const updated: any[] = [];
       const errors: any[] = [];
       const skipped: any[] = [];
 
@@ -441,10 +455,32 @@ router.post(
             return '';
           };
 
+          // Recherche « partielle » : renvoie la 1re valeur non vide dont l'en-tete contient un des radicaux.
+          // Utile pour le telephone dont les en-tetes varient (Mobile, GSM, Telephone portable, TELEPHONE 1/2/3...).
+          const getFieldPartial = (substrings: string[]) => {
+            for (const [k, v] of Object.entries(normalizedRecord)) {
+              if (!k) continue;
+              if (substrings.some((s) => k.includes(s))) {
+                const val = (v || '').toString().trim();
+                if (val) return val;
+              }
+            }
+            return '';
+          };
+
           const firstName = getField(['prenom', 'prénom', 'firstname', 'firstName', 'first name']).trim();
           const lastName = getField(['nom', 'lastname', 'lastName', 'last name']).trim();
           const email = getField(['email', 'mail']).trim().replace(/;/g, '');
-          const phone = getField(['telephone', 'téléphone', 'phone', 'telephone 1', 'telephone 2', 'telephone 3', 'tel', 'portable']).trim().replace(/;/g, '');
+
+          // Telephone : d'abord les en-tetes connus, sinon fallback sur un match partiel de l'en-tete.
+          let phone = getField(['telephone', 'téléphone', 'phone', 'telephone 1', 'telephone 2', 'telephone 3', 'tel', 'portable']).trim().replace(/;/g, '');
+          if (!phone) {
+            phone = getFieldPartial(['tel', 'phone', 'mobile', 'gsm', 'portable']).replace(/;/g, '').trim();
+          }
+          // Restaurer le 0 initial perdu quand Excel stocke le numero comme un nombre (ex: 651904945 -> 0651904945).
+          if (/^\d{9}$/.test(phone)) {
+            phone = '0' + phone;
+          }
 
           // Validation: nom et prenom obligatoires
           if (!firstName || !lastName) {
@@ -457,21 +493,44 @@ router.post(
             continue;
           }
 
-          // Detection de doublons par email
-          if (email && existingEmails.has(email.toLowerCase())) {
-            skipped.push({ record, reason: `Doublon email: ${email}` });
-            continue;
-          }
-          // Detection de doublons par nom+prenom
           const nameKey = `${firstName.toLowerCase()}|${lastName.toLowerCase()}`;
-          if (existingNames.has(nameKey)) {
-            skipped.push({ record, reason: `Doublon nom: ${firstName} ${lastName}` });
+
+          // Champs optionnels (contact + tailles de vetements). Reutilises en creation ET en mise a jour.
+          const address = getField(['adresse', 'address']).trim();
+          const postalCodeRaw = getField(['codePostal', 'codepostal', 'postalCode', 'postal code', 'cp', 'code postal']).trim();
+          // Remettre le 0 initial si code postal francais a 4 chiffres
+          const postalCode = postalCodeRaw ? (postalCodeRaw.length === 4 ? '0' + postalCodeRaw : postalCodeRaw) : '';
+          const city = getField(['ville', 'city']).trim();
+          const club = getField(['club']).trim();
+          const licenseNumber = getField(['licence', 'license', 'licenseNumber', 'numeroLicence', 'n° licence', 'numero licence']).trim();
+          const tshirtSize = getField(['tailleTshirt', 'tailletshirt', 'tshirtSize', 't-shirt']).trim();
+          const shortSize = getField(['tailleShort', 'tailleshort', 'shortSize']).trim();
+          const tracksuitSize = getField(['tailleSurvetement', 'taillesurvetement', 'tracksuitSize']).trim();
+          const shoeSize = getField(['pointure', 'shoeSize']).trim();
+
+          // Re-import : si le ramasseur existe deja (par email ou par nom+prenom), on MET A JOUR
+          // les champs fournis (telephone, tailles de vetements...) au lieu de simplement ignorer la ligne.
+          // `|| undefined` : ne jamais ecraser une valeur existante avec une chaine vide.
+          const existingId = (email && emailToId.get(email.toLowerCase())) || nameToId.get(nameKey);
+          if (existingId) {
+            const ballkid = await prisma.ballkid.update({
+              where: { id: existingId },
+              data: {
+                phone: phone || undefined,
+                address: address || undefined,
+                postalCode: postalCode || undefined,
+                city: city || undefined,
+                club: club || undefined,
+                licenseNumber: licenseNumber || undefined,
+                tshirtSize: tshirtSize || undefined,
+                shortSize: shortSize || undefined,
+                tracksuitSize: tracksuitSize || undefined,
+                shoeSize: shoeSize || undefined,
+              },
+            });
+            updated.push(ballkid);
             continue;
           }
-
-          // Ajouter aux sets pour eviter les doublons dans le meme fichier
-          if (email) existingEmails.add(email.toLowerCase());
-          existingNames.add(nameKey);
 
           const ballkid = await prisma.ballkid.create({
             data: {
@@ -482,24 +541,23 @@ router.post(
               birthDate: parseBirthDate(getField(['dateNaissance', 'datenaissance', 'birthDate', 'birth date', 'age', 'date de naissance', 'ne(e)', 'nee'])),
               gender: mapGender(getField(['sexe', 'genre', 'gender'])),
               phone: phone || null,
-              address: getField(['adresse', 'address']) || null,
-              postalCode: (() => {
-                const cp = getField(['codePostal', 'codepostal', 'postalCode', 'postal code', 'cp', 'code postal']);
-                if (!cp) return null;
-                // Remettre le 0 initial si code postal francais a 4 chiffres
-                return cp.length === 4 ? '0' + cp : cp;
-              })(),
-              city: getField(['ville', 'city']) || null,
-              club: getField(['club']) || null,
-              licenseNumber: getField(['licence', 'license', 'licenseNumber', 'numeroLicence', 'n° licence', 'numero licence']) || null,
-              tshirtSize: getField(['tailleTshirt', 'tailletshirt', 'tshirtSize', 't-shirt']) || null,
-              shortSize: getField(['tailleShort', 'tailleshort', 'shortSize']) || null,
-              tracksuitSize: getField(['tailleSurvetement', 'taillesurvetement', 'tracksuitSize']) || null,
-              shoeSize: getField(['pointure', 'shoeSize']) || null,
+              address: address || null,
+              postalCode: postalCode || null,
+              city: city || null,
+              club: club || null,
+              licenseNumber: licenseNumber || null,
+              tshirtSize: tshirtSize || null,
+              shortSize: shortSize || null,
+              tracksuitSize: tracksuitSize || null,
+              shoeSize: shoeSize || null,
               status: BallkidStatus.PENDING,
             },
           });
           created.push(ballkid);
+
+          // Ajouter aux maps pour eviter les doublons dans le meme fichier
+          if (email) emailToId.set(email.toLowerCase(), ballkid.id);
+          nameToId.set(nameKey, ballkid.id);
         } catch (err: any) {
           errors.push({ record, error: err.message });
         }
@@ -509,6 +567,7 @@ router.post(
         success: true,
         data: {
           imported: created.length,
+          updated: updated.length,
           skipped: skipped.length,
           errors: errors.length,
           skippedDetails: skipped,
