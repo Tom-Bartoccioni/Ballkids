@@ -157,14 +157,19 @@ router.post(
 // PUT /api/tournaments/:id
 router.put('/:id', authenticate, requireAdmin, async (req: AuthRequest, res: any, next: any) => {
   try {
-    const data = { ...req.body };
+    // Whitelist des champs modifiables (pas de mass-assignment : isActive se change
+    // via /activate, id/year gérés à part).
+    const { name, year, startDate, endDate } = req.body;
+    const data: any = {};
+    if (name !== undefined) data.name = name;
+    if (year !== undefined) data.year = year;
+    if (startDate !== undefined) data.startDate = new Date(startDate);
+    if (endDate !== undefined) data.endDate = new Date(endDate);
+
     const oldTournament = await prisma.tournament.findUnique({
       where: { id: req.params.id },
       include: { tournamentDays: { orderBy: { dayNumber: 'asc' } } },
     });
-
-    if (data.startDate) data.startDate = new Date(data.startDate);
-    if (data.endDate) data.endDate = new Date(data.endDate);
 
     const tournament = await prisma.tournament.update({
       where: { id: req.params.id },

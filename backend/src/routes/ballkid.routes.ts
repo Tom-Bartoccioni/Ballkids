@@ -278,8 +278,19 @@ router.post(
 router.put('/:id', authenticate, requireAdmin, async (req: AuthRequest, res, next) => {
   try {
     const { id } = req.params;
-    const data = { ...req.body };
-    
+
+    // Whitelist des champs modifiables : on n'accepte PAS tournamentId, id,
+    // createdAt/updatedAt ni les relations (pas de mass-assignment).
+    const ALLOWED_FIELDS = [
+      'firstName', 'lastName', 'birthDate', 'gender', 'club', 'email',
+      'phone', 'phoneFather', 'phoneMother', 'address', 'postalCode', 'city',
+      'licenseNumber', 'photoUrl', 'tshirtSize', 'shortSize', 'tracksuitSize',
+      'shoeSize', 'status', 'isVeteran',
+    ] as const;
+    const data: any = {};
+    for (const key of ALLOWED_FIELDS) {
+      if (req.body[key] !== undefined) data[key] = req.body[key];
+    }
     if (data.birthDate) {
       data.birthDate = new Date(data.birthDate);
     }
