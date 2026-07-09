@@ -3,6 +3,7 @@ import { body, query, validationResult } from 'express-validator';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import convertHeic from 'heic-convert';
 import prisma from '../lib/prisma.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { authenticate, requireAdmin, AuthRequest } from '../middleware/auth.js';
@@ -29,6 +30,21 @@ const normalizeKey = (value: string) =>
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
+    .trim();
+
+// Normalise un nom de personne (ou un nom de fichier photo) pour le matching :
+// retire les accents, met en minuscules, supprime les suffixes de copie de l'OS
+// (ex. \u00ab (1) \u00bb), convertit tout s\u00e9parateur/ponctuation (_ - . ' espaces\u2026) en un
+// espace unique. Appliqu\u00e9e \u00e0 l'IDENTIQUE aux cl\u00e9s d'index et aux noms de fichiers
+// pour garantir la sym\u00e9trie du matching.
+const normalizeName = (value: string) =>
+  value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\([^)]*\)/g, ' ') // suffixes OS : \u00ab (1) \u00bb, \u00ab (copie) \u00bb
+    .replace(/[^a-z0-9]+/g, ' ') // s\u00e9parateurs & ponctuation -> espace
+    .replace(/\s+/g, ' ')
     .trim();
 
 // Configuration multer pour CSV (mémoire)
@@ -59,18 +75,45 @@ const allowedPhotoTypes = isDemoMode
   : ['image/jpeg', 'image/png', 'image/webp'];
 const maxPhotoSize = isDemoMode ? 2 * 1024 * 1024 : 5 * 1024 * 1024;
 
+// Détection HEIC/HEIF (format par défaut des iPhones). Le mimetype envoyé par le
+// navigateur est peu fiable (parfois vide) : on regarde aussi l'extension.
+const isHeic = (file: { mimetype: string; originalname: string }) =>
+  /image\/hei[cf]/i.test(file.mimetype) || /\.hei[cf]$/i.test(file.originalname);
+
+// Hors mode démo, on accepte le HEIC (converti en JPEG à l'arrivée).
+const heicAllowed = !isDemoMode;
+
 const uploadPhoto = multer({
   storage: storagePhoto,
   limits: { fileSize: maxPhotoSize },
   fileFilter: (req, file, cb) => {
-    if (allowedPhotoTypes.includes(file.mimetype)) {
+    if (allowedPhotoTypes.includes(file.mimetype) || (heicAllowed && isHeic(file))) {
       cb(null, true);
     } else {
-      const formats = isDemoMode ? 'JPG ou PNG' : 'JPG, PNG ou WebP';
+      const formats = isDemoMode ? 'JPG ou PNG' : 'JPG, PNG, WebP ou HEIC';
       cb(new Error(`Type de fichier non autorisé. Utilisez ${formats}.`));
     }
   }
 });
+
+// Convertit sur le disque un fichier HEIC/HEIF en JPEG et met à jour les champs
+// multer (path/filename/mimetype). Les navigateurs n'affichant pas le HEIC, la
+// conversion garantit que la vignette sera visible. No-op si le fichier n'est
+// pas du HEIC.
+async function convertHeicFileToJpeg(file: Express.Multer.File): Promise<void> {
+  if (!isHeic(file)) return;
+  const inputBuffer = await fs.promises.readFile(file.path);
+  const output = await convertHeic({ buffer: inputBuffer, format: 'JPEG', quality: 0.9 });
+  const newFilename = file.filename.replace(/\.[^.]*$/, '') + '.jpg';
+  const newPath = path.join(uploadDir, newFilename);
+  await fs.promises.writeFile(newPath, Buffer.from(output));
+  if (newPath !== file.path && fs.existsSync(file.path)) {
+    await fs.promises.unlink(file.path);
+  }
+  file.path = newPath;
+  file.filename = newFilename;
+  file.mimetype = 'image/jpeg';
+}
 
 // GET /api/ballkids - Liste des ramasseurs
 router.get('/', authenticate, async (req: AuthRequest, res, next) => {
@@ -635,53 +678,102 @@ router.post(
         select: { id: true, firstName: true, lastName: true, photoUrl: true },
       });
 
-      // Créer un index normalisé pour le matching
-      const ballkidIndex = new Map<string, typeof ballkids[0]>();
+      // Index normalisé nom -> ramasseur(s). Une même clé peut viser PLUSIEURS
+      // ramasseurs (vrais homonymes, ou paires prénom/nom inversées entre deux
+      // personnes) : on les conserve tous pour signaler l'ambiguïté au lieu
+      // d'écraser silencieusement — sinon un ramasseur devient inatteignable.
+      const ballkidIndex = new Map<string, typeof ballkids>();
+      const addKey = (key: string, bk: typeof ballkids[0]) => {
+        if (!key) return;
+        const existing = ballkidIndex.get(key);
+        if (existing) {
+          if (!existing.some(e => e.id === bk.id)) existing.push(bk);
+        } else {
+          ballkidIndex.set(key, [bk]);
+        }
+      };
       for (const bk of ballkids) {
-        const key1 = normalizeKey(`${bk.lastName} ${bk.firstName}`);
-        const key2 = normalizeKey(`${bk.firstName} ${bk.lastName}`);
-        if (!ballkidIndex.has(key1)) ballkidIndex.set(key1, bk);
-        if (!ballkidIndex.has(key2)) ballkidIndex.set(key2, bk);
+        addKey(normalizeName(`${bk.lastName} ${bk.firstName}`), bk);
+        addKey(normalizeName(`${bk.firstName} ${bk.lastName}`), bk);
       }
 
       const matched: { filename: string; ballkidName: string }[] = [];
       const notFound: string[] = [];
       const duplicates: string[] = [];
+      const ambiguous: { filename: string; candidates: string[] }[] = [];
       const alreadyAssigned = new Set<string>();
+      // Fichiers matchés conservés sur disque : à NE PAS supprimer en cas d'erreur.
+      const savedPaths = new Set<string>();
 
-      for (const file of files) {
-        const baseName = path.basename(file.originalname, path.extname(file.originalname));
-        const normalized = normalizeKey(baseName.replace(/[_\-]/g, ' '));
+      try {
+        for (const file of files) {
+          // Convertir les photos iPhone (HEIC) en JPEG avant traitement.
+          if (isHeic(file)) {
+            try {
+              await convertHeicFileToJpeg(file);
+            } catch {
+              notFound.push(file.originalname);
+              if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
+              continue;
+            }
+          }
 
-        const bk = ballkidIndex.get(normalized);
+          const baseName = path.basename(file.originalname, path.extname(file.originalname));
+          const normalized = normalizeName(baseName);
 
-        if (!bk) {
-          notFound.push(file.originalname);
-          fs.unlinkSync(file.path);
-          continue;
+          const candidates = ballkidIndex.get(normalized);
+
+          if (!candidates || candidates.length === 0) {
+            notFound.push(file.originalname);
+            fs.unlinkSync(file.path);
+            continue;
+          }
+
+          if (candidates.length > 1) {
+            // Plusieurs ramasseurs portent ce nom : on ne devine pas, on signale.
+            ambiguous.push({
+              filename: file.originalname,
+              candidates: candidates.map(c => `${c.lastName} ${c.firstName}`),
+            });
+            fs.unlinkSync(file.path);
+            continue;
+          }
+
+          const bk = candidates[0];
+
+          if (alreadyAssigned.has(bk.id)) {
+            duplicates.push(file.originalname);
+            fs.unlinkSync(file.path);
+            continue;
+          }
+
+          // On écrit d'abord la nouvelle URL, puis on supprime l'ancien fichier :
+          // ainsi une erreur DB ne détruit jamais la photo existante.
+          const photoUrl = `/uploads/photos/${file.filename}`;
+          const previousPhotoUrl = bk.photoUrl;
+          await prisma.ballkid.update({
+            where: { id: bk.id },
+            data: { photoUrl },
+          });
+          savedPaths.add(file.path);
+
+          if (previousPhotoUrl) {
+            const oldPath = path.join(process.cwd(), previousPhotoUrl);
+            if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+          }
+
+          alreadyAssigned.add(bk.id);
+          matched.push({ filename: file.originalname, ballkidName: `${bk.lastName} ${bk.firstName}` });
         }
-
-        if (alreadyAssigned.has(bk.id)) {
-          duplicates.push(file.originalname);
-          fs.unlinkSync(file.path);
-          continue;
-        }
-
-        if (bk.photoUrl) {
-          const oldPath = path.join(process.cwd(), bk.photoUrl);
-          if (fs.existsSync(oldPath)) {
-            fs.unlinkSync(oldPath);
+      } catch (loopError) {
+        // Nettoyer les fichiers non traités (orphelins) sans toucher aux photos
+        // déjà enregistrées en base.
+        for (const f of files) {
+          if (!savedPaths.has(f.path) && fs.existsSync(f.path)) {
+            try { fs.unlinkSync(f.path); } catch { /* ignore */ }
           }
         }
-
-        const photoUrl = `/uploads/photos/${file.filename}`;
-        await prisma.ballkid.update({
-          where: { id: bk.id },
-          data: { photoUrl },
-        });
-
-        alreadyAssigned.add(bk.id);
-        matched.push({ filename: file.originalname, ballkidName: `${bk.lastName} ${bk.firstName}` });
+        throw loopError;
       }
 
       res.json({
@@ -690,7 +782,8 @@ router.post(
           matched: matched.length,
           notFound: notFound.length,
           duplicates: duplicates.length,
-          details: { matched, notFound, duplicates },
+          ambiguous: ambiguous.length,
+          details: { matched, notFound, duplicates, ambiguous },
         },
       });
     } catch (error) {
@@ -711,6 +804,16 @@ router.post(
         throw new AppError('Photo requise', 400);
       }
 
+      // Convertir une photo iPhone (HEIC) en JPEG affichable.
+      if (isHeic(req.file)) {
+        try {
+          await convertHeicFileToJpeg(req.file);
+        } catch {
+          if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+          throw new AppError('Conversion de la photo HEIC impossible', 400);
+        }
+      }
+
       const { id } = req.params;
 
       const existing = await prisma.ballkid.findUnique({ where: { id } });
@@ -719,18 +822,20 @@ router.post(
         throw new AppError('Ramasseur non trouvé', 404);
       }
 
-      if (existing.photoUrl) {
-        const oldPath = path.join(process.cwd(), existing.photoUrl);
-        if (fs.existsSync(oldPath)) {
-          fs.unlinkSync(oldPath);
-        }
-      }
-
+      // Écrire la nouvelle URL d'abord, supprimer l'ancien fichier ensuite :
+      // une erreur DB ne doit jamais détruire la photo existante.
       const photoUrl = `/uploads/photos/${req.file.filename}`;
       const ballkid = await prisma.ballkid.update({
         where: { id },
         data: { photoUrl },
       });
+
+      if (existing.photoUrl && existing.photoUrl !== photoUrl) {
+        const oldPath = path.join(process.cwd(), existing.photoUrl);
+        if (fs.existsSync(oldPath)) {
+          fs.unlinkSync(oldPath);
+        }
+      }
 
       res.json({ success: true, data: { ballkid, photoUrl } });
     } catch (error) {

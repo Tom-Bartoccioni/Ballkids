@@ -40,7 +40,7 @@ export default function BallkidsPage() {
   const importInputRef = useRef<HTMLInputElement | null>(null)
   const photoImportRef = useRef<HTMLInputElement | null>(null)
   const [search, setSearch] = useState('')
-  const [photoResult, setPhotoResult] = useState<{ matched: number; notFound: number; duplicates: number; details: { matched: { filename: string; ballkidName: string }[]; notFound: string[]; duplicates: string[] } } | null>(null)
+  const [photoResult, setPhotoResult] = useState<{ matched: number; notFound: number; duplicates: number; ambiguous?: number; details: { matched: { filename: string; ballkidName: string }[]; notFound: string[]; duplicates: string[]; ambiguous?: { filename: string; candidates: string[] }[] } } | null>(null)
   const [page, setPage] = useState(1)
   const [statusFilter, setStatusFilter] = useState('')
   const [sortKey, setSortKey] = useState<SortKey>('lastName')
@@ -374,7 +374,7 @@ export default function BallkidsPage() {
               <input
                 ref={photoImportRef}
                 type="file"
-                accept="image/jpeg,image/png,image/webp"
+                accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif"
                 multiple
                 className="hidden"
                 onChange={handleBulkPhotoImport}
@@ -633,14 +633,20 @@ export default function BallkidsPage() {
               </div>
 
               <div className="space-y-3 mb-4">
-                <div className="flex items-center gap-2 text-green-700 bg-green-50 p-3 rounded-lg">
-                  <CheckCircle className="w-5 h-5" />
+                <div className={`flex items-center gap-2 p-3 rounded-lg ${photoResult.matched > 0 ? 'text-green-700 bg-green-50' : 'text-orange-700 bg-orange-50'}`}>
+                  {photoResult.matched > 0 ? <CheckCircle className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}
                   <span className="font-medium">{photoResult.matched} photo{photoResult.matched > 1 ? 's' : ''} associee{photoResult.matched > 1 ? 's' : ''}</span>
                 </div>
                 {photoResult.notFound > 0 && (
                   <div className="flex items-center gap-2 text-red-700 bg-red-50 p-3 rounded-lg">
                     <XCircle className="w-5 h-5" />
                     <span className="font-medium">{photoResult.notFound} non trouvee{photoResult.notFound > 1 ? 's' : ''}</span>
+                  </div>
+                )}
+                {(photoResult.ambiguous ?? 0) > 0 && (
+                  <div className="flex items-center gap-2 text-amber-700 bg-amber-50 p-3 rounded-lg">
+                    <XCircle className="w-5 h-5" />
+                    <span className="font-medium">{photoResult.ambiguous} homonyme{(photoResult.ambiguous ?? 0) > 1 ? 's' : ''} (a associer manuellement)</span>
                   </div>
                 )}
                 {photoResult.duplicates > 0 && (
@@ -681,8 +687,38 @@ export default function BallkidsPage() {
                 </div>
               )}
 
+              {(photoResult.details.ambiguous?.length ?? 0) > 0 && (
+                <div className="mb-3">
+                  <p className="text-sm font-medium text-gray-600 mb-1">Homonymes (plusieurs ramasseurs, a associer manuellement depuis la fiche) :</p>
+                  <ul className="text-sm text-amber-700 space-y-1">
+                    {photoResult.details.ambiguous!.map((a, i) => (
+                      <li key={i} className="flex items-center gap-2">
+                        <XCircle className="w-3 h-3 flex-shrink-0" />
+                        <span className="truncate">{a.filename}</span>
+                        <span className="text-gray-400">→</span>
+                        <span className="font-medium">{a.candidates.join(', ')}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {photoResult.details.duplicates.length > 0 && (
+                <div className="mb-3">
+                  <p className="text-sm font-medium text-gray-600 mb-1">Doublons (plusieurs fichiers pour le meme ramasseur, seul le premier est garde) :</p>
+                  <ul className="text-sm text-orange-600 space-y-1">
+                    {photoResult.details.duplicates.map((f, i) => (
+                      <li key={i} className="flex items-center gap-2">
+                        <XCircle className="w-3 h-3 flex-shrink-0" />
+                        <span className="truncate">{f}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
               <div className="mt-4 pt-3 border-t">
-                <p className="text-xs text-gray-400">Format attendu : Nom Prenom.jpg ou Prenom Nom.jpg (separateur : espace, tiret ou underscore)</p>
+                <p className="text-xs text-gray-400">Format attendu : Nom Prenom.jpg ou Prenom Nom.jpg (separateur : espace, tiret ou underscore). Les accents, majuscules et l'ordre nom/prenom sont ignores.</p>
               </div>
             </div>
           </div>
