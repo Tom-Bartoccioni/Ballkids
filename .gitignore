@@ -47,6 +47,10 @@ frontend/vite.config.d.ts
 # Métadonnées Windows (WSL)
 *Zone.Identifier
 
+# Données d'exemple / assets locaux non versionnés
+Test_excel/
+logo.png
+
 # Test coverage
 coverage/
 
