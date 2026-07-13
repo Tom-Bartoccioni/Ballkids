@@ -7,9 +7,11 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToast } from '@/hooks/use-toast'
 
+const isDemoMode = import.meta.env.VITE_DEMO_MODE === 'true'
+
 export default function LoginPage() {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+  const [email, setEmail] = useState(isDemoMode ? 'demo@demo.com' : '')
+  const [password, setPassword] = useState(isDemoMode ? 'demo1234' : '')
   const [isLoading, setIsLoading] = useState(false)
   const { login } = useAuth()
   const navigate = useNavigate()
@@ -76,6 +78,12 @@ export default function LoginPage() {
             </Button>
           </form>
 
+          {isDemoMode && (
+            <p className="mt-4 text-center text-xs text-gray-500">
+              Mode démonstration — identifiants pré-remplis : <br />
+              <span className="font-medium">demo@demo.com</span> / <span className="font-medium">demo1234</span>
+            </p>
+          )}
         </CardContent>
       </Card>
     </div>

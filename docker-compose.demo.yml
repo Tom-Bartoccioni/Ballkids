@@ -1,0 +1,45 @@
+# Instance de DÉMONSTRATION publique (données fictives, reset automatique).
+# Lancement : docker compose -f docker-compose.demo.yml up --build
+#
+# IMPORTANT :
+#  - Utilise un JWT_SECRET DIFFÉRENT de la production (ci-dessous = placeholder à changer).
+#  - Volumes séparés de la prod pour ne jamais mélanger les données.
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ballkids-backend-demo
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: "file:/app/data/demo.db"
+      # ⚠️ À CHANGER : secret distinct de la prod
+      JWT_SECRET: "${DEMO_JWT_SECRET:-change-me-demo-secret-distinct-de-la-prod}"
+      JWT_EXPIRES_IN: "7d"
+      FRONTEND_URL: "http://localhost"
+      DEMO_MODE: "true"
+      DEMO_RESET_INTERVAL_HOURS: "24"
+    volumes:
+      - backend_uploads_demo:/app/uploads
+      - backend_data_demo:/app/data
+    expose:
+      - "3001"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_DEMO_MODE: "true"
+    container_name: ballkids-frontend-demo
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  backend_uploads_demo:
+  backend_data_demo:

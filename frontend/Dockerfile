@@ -9,6 +9,11 @@ RUN npm install
 
 # Copy source and build
 COPY . .
+
+# Active le mode démonstration au build si fourni (bandeau + login pré-rempli)
+ARG VITE_DEMO_MODE
+ENV VITE_DEMO_MODE=$VITE_DEMO_MODE
+
 RUN npm run build
 
 # Stage 2: Production with nginx
