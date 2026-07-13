@@ -32,6 +32,20 @@ backend/uploads/photos/*
 # Prisma
 backend/prisma/*.db
 backend/prisma/*.db-journal
+backend/prisma/**/*.db
+backend/prisma/**/*.db-journal
+
+# Sauvegardes / bases de données égarées
+*.db-backup
+backup.db
+
+# Artefacts de build TypeScript / Vite
+*.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.d.ts
+
+# Métadonnées Windows (WSL)
+*Zone.Identifier
 
 # Test coverage
 coverage/

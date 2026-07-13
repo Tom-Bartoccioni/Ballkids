@@ -1,0 +1,3 @@
+# Instance de démonstration — ne pas indexer
+User-agent: *
+Disallow: /
