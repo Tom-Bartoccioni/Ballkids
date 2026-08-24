@@ -74,7 +74,9 @@ async function main() {
   });
 
   await prisma.coach.upsert({
-    where: { userId: coachUser.id },
+    where: {
+      userId_tournamentId: { userId: coachUser.id, tournamentId: tournament.id },
+    },
     update: {},
     create: {
       userId: coachUser.id,
