@@ -53,10 +53,10 @@ setup() {
     npx prisma generate
     
     print_step "Création de la base de données SQLite..."
-    npx prisma db push
+    npm run db:push
     
     print_step "Peuplement de la base de données..."
-    npx prisma db seed
+    npm run db:seed
     
     # Créer le dossier uploads
     mkdir -p uploads/photos
@@ -94,8 +94,8 @@ start_dev() {
     if [ ! -f "backend/prisma/dev.db" ]; then
         print_warning "Base de données non trouvée. Création..."
         cd backend
-        npx prisma db push
-        npx prisma db seed
+        npm run db:push
+        npm run db:seed
         cd ..
     fi
     
@@ -136,8 +136,8 @@ reset_db() {
         load_nvm
         cd backend
         rm -f prisma/dev.db prisma/dev.db-journal
-        npx prisma db push
-        npx prisma db seed
+        npm run db:push
+        npm run db:seed
         cd ..
         print_step "Base de données réinitialisée!"
     fi
