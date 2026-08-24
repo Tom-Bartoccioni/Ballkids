@@ -92,9 +92,10 @@ export default function BallkidsPage() {
   const pendingCount = pendingData?.ballkids?.length || 0
 
   const { data, isLoading } = useQuery({
-    queryKey: ['ballkids', page, search, statusFilter],
+    queryKey: ['ballkids', tournamentData?.id, page, search, statusFilter],
     queryFn: async () => {
       const params: any = { page, limit: 200, excludePending: true }
+      if (tournamentData?.id) params.tournamentId = tournamentData.id
       if (search) params.search = search
       if (statusFilter) params.status = statusFilter
       const res = await api.get('/ballkids', { params })

@@ -25,6 +25,17 @@ const Gender = {
 } as const;
 
 const router = Router();
+
+// Sans tournamentId explicite, on se limite au tournoi actif : sinon les listes
+// melangent les ramasseurs de toutes les editions.
+const resolveTournamentId = async (tournamentId?: unknown) => {
+  if (typeof tournamentId === 'string' && tournamentId) return tournamentId;
+  const active = await prisma.tournament.findFirst({
+    where: { isActive: true },
+    select: { id: true },
+  });
+  return active?.id;
+};
 const normalizeKey = (value: string) =>
   value
     .normalize('NFD')
@@ -128,8 +139,9 @@ router.get('/', authenticate, async (req: AuthRequest, res, next) => {
     } = req.query;
 
     const where: any = {};
-    
-    if (tournamentId) where.tournamentId = tournamentId;
+
+    const scopedTournamentId = await resolveTournamentId(tournamentId);
+    if (scopedTournamentId) where.tournamentId = scopedTournamentId;
     if (status) where.status = status;
     // Exclure les PENDING si demandé (et pas de filtre status spécifique)
     if (excludePending === 'true' && !status) {
@@ -232,10 +244,12 @@ router.get('/pending', authenticate, requireAdmin, async (req: AuthRequest, res,
   try {
     const { tournamentId } = req.query;
 
+    const scopedTournamentId = await resolveTournamentId(tournamentId);
+
     const ballkids = await prisma.ballkid.findMany({
       where: {
         status: BallkidStatus.PENDING,
-        ...(tournamentId ? { tournamentId: tournamentId as string } : {}),
+        ...(scopedTournamentId ? { tournamentId: scopedTournamentId } : {}),
       },
       orderBy: { createdAt: 'desc' },
     });
