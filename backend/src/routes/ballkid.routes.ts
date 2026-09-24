@@ -59,7 +59,8 @@ const normalizePhone = (raw: string) => {
 
 // En-tetes de telephone designant un PARENT / responsable legal, a exclure de
 // la recherche partielle du telephone de l'enfant.
-const PARENT_HEADER = /(pere|mere|parent|legal|responsable|tuteur)/;
+// Convention retenue avec l'admin : TEL = enfant, TEL 1 / TEL 2 = responsables legaux.
+const PARENT_HEADER = /(pere|mere|parent|legal|responsable|tuteur|^tel(ephone)?[12]$)/;
 
 // Normalise un nom de personne (ou un nom de fichier photo) pour le matching :
 // retire les accents, met en minuscules, supprime les suffixes de copie de l'OS
@@ -589,6 +590,7 @@ router.post(
             'Téléphone parent 1', 'Tel parent 1', 'Parent 1',
             'Téléphone responsable légal 1', 'Tel responsable légal 1', 'Responsable légal 1',
             'Téléphone légal 1', 'Tel légal 1', 'Légal 1', 'Responsable 1', 'Tel responsable 1',
+            'Tel 1', 'Téléphone 1',
             'phoneFather',
           ]));
           const phoneMother = normalizePhone(getField([
@@ -596,11 +598,12 @@ router.post(
             'Téléphone parent 2', 'Tel parent 2', 'Parent 2',
             'Téléphone responsable légal 2', 'Tel responsable légal 2', 'Responsable légal 2',
             'Téléphone légal 2', 'Tel légal 2', 'Légal 2', 'Responsable 2', 'Tel responsable 2',
+            'Tel 2', 'Téléphone 2',
             'phoneMother',
           ]));
           let phone = normalizePhone(getField([
             'Téléphone', 'Téléphone enfant', 'Tel enfant', 'Portable enfant', 'Téléphone ramasseur',
-            'phone', 'Téléphone 1', 'Tel', 'Portable', 'Mobile',
+            'phone', 'Tel', 'Portable', 'Mobile',
           ]));
           if (!phone) {
             phone = normalizePhone(getFieldPartial(['tel', 'phone', 'mobile', 'gsm', 'portable'], PARENT_HEADER));

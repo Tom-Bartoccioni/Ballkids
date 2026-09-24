@@ -231,3 +231,26 @@ describe("Import ramasseurs - identite = nom + prenom (+ date), jamais l'email",
     expect(data.errorDetails[0].error).toMatch(/ambigu/i);
   });
 });
+
+describe('Import ramasseurs - en-tetes TEL / TEL 1 / TEL 2 (convention retenue avec l admin)', () => {
+  it('TEL -> enfant, TEL 1 -> responsable legal 1, TEL 2 -> responsable legal 2', async () => {
+    const buf = await makeXlsx(
+      ['NOM', 'PRENOM', 'MAIL', 'TEL', 'TEL 1', 'TEL 2'],
+      [['Tel', 'Quatre', 'quatre@tel.test', 611111114, 622222224, 633333334]]
+    );
+    const data = await importFile(buf);
+    expect(data.errors).toBe(0);
+    const bk = await prisma.ballkid.findFirst({ where: { email: 'quatre@tel.test' } });
+    expect(bk).toMatchObject({ phone: '0611111114', phoneFather: '0622222224', phoneMother: '0633333334' });
+    expect(data.unmappedColumns).not.toEqual(expect.arrayContaining(['TEL', 'TEL 1', 'TEL 2']));
+  });
+
+  it("sans colonne TEL, TEL 1 n'est jamais pris pour le telephone de l'enfant", async () => {
+    const buf = await makeXlsx(['NOM', 'PRENOM', 'MAIL', 'TEL 1'], [['Tel', 'Cinq', 'cinq@tel.test', '0655555555']]);
+    const data = await importFile(buf);
+    expect(data.errors).toBe(0);
+    const bk = await prisma.ballkid.findFirst({ where: { email: 'cinq@tel.test' } });
+    expect(bk?.phone).toBeNull();
+    expect(bk?.phoneFather).toBe('0655555555');
+  });
+});

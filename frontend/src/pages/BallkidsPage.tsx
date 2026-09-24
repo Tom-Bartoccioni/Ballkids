@@ -375,8 +375,8 @@ export default function BallkidsPage() {
                 onClick={handleImportClick}
                 disabled={importMutation.isPending || !tournamentData?.id}
                 title={
-                  'Colonnes reconnues : Nom, Prenom, Email, Date de naissance, Sexe, Club, Telephone, ' +
-                  'Telephone responsable legal 1 / 2 (ou pere / mere), Adresse, CP, Ville, Licence, Ancien, ' +
+                  'Colonnes reconnues : Nom, Prenom, Email, Date de naissance, Sexe, Club, TEL (enfant), ' +
+                  'TEL 1 / TEL 2 (responsables legaux, ou pere / mere), Adresse, CP, Ville, Licence, Ancien, ' +
                   'Taille T-shirt, Taille Short, Taille Survetement, Pointure. Casse, accents et espaces ignores. ' +
                   'Un fichier ne contenant que Nom + Prenom + tailles met a jour les fiches existantes.'
                 }
