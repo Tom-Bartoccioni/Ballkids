@@ -262,10 +262,10 @@ describe('POST /:tournamentId/select', () => {
     const res = await request(app)
       .post(`/api/selection/${tid}/select`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ count: 3, reserveCount: 1 });
+      .send({ count: 2, reserveCount: 1 });
 
     expect(res.status).toBe(200);
-    // selectedCount = count - reserveCount = 2 ; reserves = 1
+    // count = 2 SELECTIONNES, reserveCount = 1 remplacant EN PLUS (78 + N pour l'admin)
     expect(res.body.data.selected).toBe(2);
     expect(res.body.data.reserves).toBe(1);
 
@@ -284,7 +284,7 @@ describe('POST /:tournamentId/select', () => {
 // ---------- Édition / suppression d'une note ----------
 
 describe('PUT & DELETE /score/:scoreId', () => {
-  it('PUT met à jour le total ; rejette hors 0-20 (400) ; DELETE supprime note + détails', async () => {
+  it('PUT met à jour le total (sans plafond) ; rejette un negatif (400) ; DELETE supprime note + détails', async () => {
     const tid = await newTournament('Edit');
     const { byName } = await newSession(tid, [{ name: 'A', weight: 1 }]);
     const bk = await newBallkid(tid, 'Edit', 'Kid');
@@ -303,11 +303,19 @@ describe('PUT & DELETE /score/:scoreId', () => {
     expect(upd.status).toBe(200);
     expect(upd.body.data.selectionScore.totalScore).toBe(15);
 
-    // PUT hors 0-20 -> 400
+    // Les totaux du classeur de l'admin montent a 210 : pas de plafond a 20
+    const big = await request(app)
+      .put(`/api/selection/score/${scoreId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ score: 185 });
+    expect(big.status).toBe(200);
+    expect(big.body.data.selectionScore.totalScore).toBe(185);
+
+    // Negatif -> 400
     const bad = await request(app)
       .put(`/api/selection/score/${scoreId}`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ score: 25 });
+      .send({ score: -1 });
     expect(bad.status).toBe(400);
 
     // DELETE supprime la note et ses détails (cascade)
@@ -321,15 +329,16 @@ describe('PUT & DELETE /score/:scoreId', () => {
 // ---------- score-simple ----------
 
 describe('POST /:tournamentId/score-simple', () => {
-  it('rejette une note hors 0-20 (400)', async () => {
+  it('accepte un total brut (210) et rejette un negatif (400)', async () => {
     const tid = await newTournament('Simple');
     const bk = await newBallkid(tid, 'Simple', 'Kid');
 
-    const tooHigh = await request(app)
+    const raw210 = await request(app)
       .post(`/api/selection/${tid}/score-simple`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ ballkidId: bk.id, score: 25 });
-    expect(tooHigh.status).toBe(400);
+      .send({ ballkidId: bk.id, score: 210 });
+    expect(raw210.status).toBe(200);
+    expect(raw210.body.data.selectionScore.totalScore).toBe(210);
 
     const negative = await request(app)
       .post(`/api/selection/${tid}/score-simple`)
@@ -453,12 +462,12 @@ describe('POST /:tournamentId/import-csv', () => {
     expect(res.body.data.errorDetails[0].error).toContain('introuvable');
   });
 
-  it('normalise automatiquement les notes si le max du fichier dépasse 20', async () => {
-    const tid = await newTournament('ImportNorm');
-    const bk = await newBallkid(tid, 'Marc', 'Petit', { email: 'marc@norm.test' });
+  it('importe les totaux bruts du classeur sans les ramener sur 20', async () => {
+    const tid = await newTournament('ImportRaw');
+    const bk = await newBallkid(tid, 'Marc', 'Petit', { email: 'marc@raw.test' });
 
-    // Fichier sur 40 : max=40 > 20 -> normalisation sur 20
-    const csv = 'Email;Total\nmarc@norm.test;40\n';
+    // Total du classeur de l'admin (max 210) : doit etre stocke tel quel
+    const csv = 'Email;Total\nmarc@raw.test;185\n';
     const buffer = Buffer.from(csv, 'utf8');
 
     const res = await request(app)
@@ -469,9 +478,8 @@ describe('POST /:tournamentId/import-csv', () => {
     expect(res.status).toBe(200);
     expect(res.body.data.imported).toBe(1);
 
-    // 40 / 40 * 20 = 20
     const score = await prisma.selectionScore.findFirst({ where: { ballkidId: bk.id } });
-    expect(score?.totalScore).toBe(20);
+    expect(score?.totalScore).toBe(185);
   });
 
   it('rejette l\'import sans fichier (400)', async () => {
