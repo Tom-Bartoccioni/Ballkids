@@ -16,36 +16,25 @@ async function makeXlsx(rows: any[][], sheetName = 'Sheet1'): Promise<Buffer> {
   return Buffer.from(arrayBuffer);
 }
 
-// Replique exacte de la conversion interne (epoch 1899-12-30) pour un test
-// independant du fuseau horaire : on verifie que parseSpreadsheet applique bien
-// cette formule sur les colonnes de type date.
-function excelDateToISO(serial: number): string {
-  const epoch = new Date(1899, 11, 30);
-  const date = new Date(epoch.getTime() + serial * 86400000);
-  return date.toISOString().split('T')[0];
-}
-
 describe('parseSpreadsheet - conversion des dates Excel', () => {
-  it('convertit un serial (44197) en date ISO quand l\'en-tete contient "naissance"/"date", mais pas dans une colonne "Pointure"', async () => {
+  // Serial Excel 39832 = 19/01/2009 (epoch 1899-12-30). Le jour exact est
+  // verifie : un decalage de fuseau horaire ferait sortir 2009-01-18.
+  it("convertit un serial en date ISO exacte quand l'en-tete est une colonne date, mais pas dans une colonne Pointure", async () => {
     const buf = await makeXlsx([
       ['Nom', 'Date naissance', 'Pointure'],
-      ['Dupont', 44197, 42],
+      ['Dupont', 39832, 42],
     ]);
 
     const rows = await parseSpreadsheet(buf, 'ramasseurs.xlsx');
 
     expect(rows).toHaveLength(1);
-    // Colonne date -> conversion via l'epoch 1899-12-30
-    expect(rows[0]['Date naissance']).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(rows[0]['Date naissance']).toBe(excelDateToISO(44197));
+    expect(rows[0]['Date naissance']).toBe('2009-01-19');
     // Colonne "Pointure" : nombre NON converti, juste stringifie
     expect(rows[0]['Pointure']).toBe('42');
     expect(rows[0]['Nom']).toBe('Dupont');
   });
 
-  it('rend une cellule de type date au format YYYY-MM-DD', async () => {
-    // NB : SheetJS relit la cellule date comme un serial numerique ; la colonne
-    // "Date" etant reconnue comme colonne date, la valeur ressort en YYYY-MM-DD.
+  it('rend une cellule de type date au jour exact, quel que soit le fuseau', async () => {
     const buf = await makeXlsx([
       ['Nom', 'Date'],
       ['Martin', new Date(Date.UTC(2011, 7, 22))],
@@ -54,8 +43,18 @@ describe('parseSpreadsheet - conversion des dates Excel', () => {
     const rows = await parseSpreadsheet(buf, 'ramasseurs.xlsx');
 
     expect(rows).toHaveLength(1);
-    expect(rows[0]['Date']).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(rows[0]['Date']).toContain('2011-08');
+    expect(rows[0]['Date']).toBe('2011-08-22');
+  });
+
+  it('ne perd pas le jour pour un serial avec heure (fraction)', async () => {
+    const buf = await makeXlsx([
+      ['Nom', 'Date naissance'],
+      ['Durand', 39832.75],
+    ]);
+
+    const rows = await parseSpreadsheet(buf, 'ramasseurs.xlsx');
+
+    expect(rows[0]['Date naissance']).toBe('2009-01-19');
   });
 });
 
