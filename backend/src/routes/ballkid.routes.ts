@@ -506,18 +506,26 @@ router.post(
 
       const records = await parseSpreadsheet(req.file.buffer, req.file.originalname);
 
-      // Charger les ramasseurs existants pour detection de doublons (avec id pour permettre la mise a jour)
+      // Charger les ramasseurs existants. IDENTITE = nom + prenom (+ date de naissance
+      // pour departager les homonymes). L'email n'est PAS une identite : dans la liste
+      // reelle de l'admin, des freres et soeurs partagent l'adresse des parents.
       const existingBallkids = await prisma.ballkid.findMany({
         where: { tournamentId },
-        select: { id: true, email: true, firstName: true, lastName: true },
+        select: { id: true, firstName: true, lastName: true, birthDate: true },
       });
-      // Maps email->id et nom|prenom->id : permettent de retrouver l'enregistrement a mettre a jour lors d'un re-import
-      const emailToId = new Map<string, string>();
-      const nameToId = new Map<string, string>();
-      for (const b of existingBallkids) {
-        if (b.email) emailToId.set(b.email.toLowerCase(), b.id);
-        nameToId.set(`${normalizeName(b.firstName)}|${normalizeName(b.lastName)}`, b.id);
-      }
+      const nameToIds = new Map<string, { id: string; birthDate: Date }[]>();
+      const addToIndex = (b: { id: string; firstName: string; lastName: string; birthDate: Date }) => {
+        const key = `${normalizeName(b.firstName)}|${normalizeName(b.lastName)}`;
+        const list = nameToIds.get(key) ?? [];
+        list.push({ id: b.id, birthDate: b.birthDate });
+        nameToIds.set(key, list);
+      };
+      existingBallkids.forEach(addToIndex);
+
+      // Date « inconnue » posee par parseBirthDate quand le fichier n'en fournit pas :
+      // compatible avec n'importe quelle date lors du rapprochement.
+      const UNKNOWN_BIRTHDATE = new Date('2010-01-01').getTime();
+      const sameDay = (a: Date, b: Date) => a.toISOString().slice(0, 10) === b.toISOString().slice(0, 10);
 
       // En-tetes (normalises) effectivement lus par un getField/getFieldPartial :
       // ce qui reste a la fin est signale a l'utilisateur comme ignore.
@@ -610,7 +618,22 @@ router.post(
           }
 
           const nameKey = `${normalizeName(firstName)}|${normalizeName(lastName)}`;
-          const existingId = (email && emailToId.get(email.toLowerCase())) || nameToId.get(nameKey);
+          const birthDateRaw = getField(['dateNaissance', 'datenaissance', 'birthDate', 'birth date', 'age', 'date de naissance', 'ne(e)', 'nee']).trim();
+          const birthDate = birthDateRaw ? parseBirthDate(birthDateRaw) : null;
+
+          // Rapprochement avec une fiche existante.
+          const candidates = nameToIds.get(nameKey) ?? [];
+          let existingId: string | undefined;
+          if (candidates.length > 0) {
+            if (birthDate) {
+              existingId = candidates.find((c) => sameDay(c.birthDate, birthDate) || c.birthDate.getTime() === UNKNOWN_BIRTHDATE)?.id;
+            } else if (candidates.length === 1) {
+              existingId = candidates[0].id;
+            } else {
+              errors.push({ record, error: `Homonyme ambigu (${candidates.length} fiches « ${lastName} ${firstName} ») : ajoutez la date de naissance` });
+              continue;
+            }
+          }
 
           // Un contact (email ou telephone) n'est exige que pour CREER une fiche.
           // Un fichier complement (ex: tailles de tenue) ne porte que nom + prenom :
@@ -641,6 +664,7 @@ router.post(
               where: { id: existingId },
               data: {
                 email: email || undefined,
+                birthDate: birthDate || undefined,
                 phone: phone || undefined,
                 phoneFather: phoneFather || undefined,
                 phoneMother: phoneMother || undefined,
@@ -666,7 +690,7 @@ router.post(
               firstName,
               lastName,
               email: email || '',
-              birthDate: parseBirthDate(getField(['dateNaissance', 'datenaissance', 'birthDate', 'birth date', 'age', 'date de naissance', 'ne(e)', 'nee'])),
+              birthDate: birthDate ?? parseBirthDate(''),
               gender: mapGender(getField(['sexe', 'genre', 'gender'])),
               phone: phone || null,
               phoneFather: phoneFather || null,
@@ -686,9 +710,8 @@ router.post(
           });
           created.push(ballkid);
 
-          // Ajouter aux maps pour eviter les doublons dans le meme fichier
-          if (email) emailToId.set(email.toLowerCase(), ballkid.id);
-          nameToId.set(nameKey, ballkid.id);
+          // Indexer la nouvelle fiche : un doublon strict dans le meme fichier la mettra a jour
+          addToIndex(ballkid);
         } catch (err: any) {
           errors.push({ record, error: err.message });
         }

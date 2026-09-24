@@ -187,3 +187,47 @@ describe('Import ramasseurs - colonnes non reconnues', () => {
     expect(data.unmappedColumns).not.toContain(' ');
   });
 });
+
+describe("Import ramasseurs - identite = nom + prenom (+ date), jamais l'email", () => {
+  it('deux freres/soeurs partageant un email familial donnent DEUX fiches', async () => {
+    const buf = await makeXlsx(
+      ['NOM', 'PRENOM', 'MAIL', 'AGE'],
+      [
+        ['Famille', 'Aine', 'parents@famille.test', '2011-02-03'],
+        ['Famille', 'Cadet', 'parents@famille.test', '2013-04-05'],
+      ]
+    );
+    const data = await importFile(buf);
+    expect(data.errors).toBe(0);
+    expect(data.imported).toBe(2);
+    expect(data.updated).toBe(0);
+    expect(await prisma.ballkid.count({ where: { lastName: 'Famille', tournamentId } })).toBe(2);
+  });
+
+  it('deux homonymes avec des dates differentes donnent deux fiches ; le re-import met a jour la bonne', async () => {
+    const buf = await makeXlsx(
+      ['NOM', 'PRENOM', 'MAIL', 'AGE', 'VILLE'],
+      [
+        ['Homonyme', 'Jules', 'j1@homo.test', '2011-01-01', 'Nice'],
+        ['Homonyme', 'Jules', 'j2@homo.test', '2012-06-06', 'Cannes'],
+      ]
+    );
+    const data = await importFile(buf);
+    expect(data.imported).toBe(2);
+
+    // Re-import du second seul, avec une nouvelle ville : c'est LUI qui doit changer
+    const buf2 = await makeXlsx(['NOM', 'PRENOM', 'AGE', 'VILLE'], [['Homonyme', 'Jules', '2012-06-06', 'Monaco']]);
+    const data2 = await importFile(buf2);
+    expect(data2.updated).toBe(1);
+    expect(data2.imported).toBe(0);
+    const both = await prisma.ballkid.findMany({ where: { lastName: 'Homonyme' }, orderBy: { birthDate: 'asc' } });
+    expect(both.map((b) => b.city)).toEqual(['Nice', 'Monaco']);
+  });
+
+  it("un homonyme sans date dans le fichier est refuse comme ambigu plutot qu'ecrase au hasard", async () => {
+    const buf = await makeXlsx(['NOM', 'PRENOM', 'VILLE'], [['Homonyme', 'Jules', 'Menton']]);
+    const data = await importFile(buf);
+    expect(data.errors).toBe(1);
+    expect(data.errorDetails[0].error).toMatch(/ambigu/i);
+  });
+});
