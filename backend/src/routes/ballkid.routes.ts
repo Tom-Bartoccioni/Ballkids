@@ -49,6 +49,18 @@ const normalizeKey = (value: string) =>
 // en-tetes du fichier ET aux alias, pour garantir la symetrie.
 const normalizeHeader = (value: string) => normalizeKey(value).replace(/[^a-z0-9]+/g, '');
 
+// Nettoyage minimal d'un numero issu d'un tableur : retire les « ; » parasites,
+// et remet le 0 initial perdu quand Excel a stocke le numero comme un nombre
+// (ex: 651904945 -> 0651904945). Les espaces internes sont conserves.
+const normalizePhone = (raw: string) => {
+  const p = (raw || '').toString().replace(/;/g, '').trim();
+  return /^\d{9}$/.test(p) ? '0' + p : p;
+};
+
+// En-tetes de telephone designant un PARENT / responsable legal, a exclure de
+// la recherche partielle du telephone de l'enfant.
+const PARENT_HEADER = /(pere|mere|parent|legal|responsable|tuteur)/;
+
 // Normalise un nom de personne (ou un nom de fichier photo) pour le matching :
 // retire les accents, met en minuscules, supprime les suffixes de copie de l'OS
 // (ex. \u00ab (1) \u00bb), convertit tout s\u00e9parateur/ponctuation (_ - . ' espaces\u2026) en un
@@ -554,15 +566,35 @@ router.post(
           const lastName = getField(['nom', 'lastname', 'lastName', 'last name']).trim();
           const email = getField(['email', 'mail']).trim().replace(/;/g, '');
 
-          // Telephone : d'abord les en-tetes connus, sinon fallback sur un match partiel de l'en-tete.
-          let phone = getField(['telephone', 'téléphone', 'phone', 'telephone 1', 'telephone 2', 'telephone 3', 'tel', 'portable']).trim().replace(/;/g, '');
+          // Telephones. Responsables d'abord (alias exacts), puis l'enfant : alias exacts,
+          // sinon match partiel en EXCLUANT les en-tetes de parents pour ne jamais
+          // attribuer le numero d'un parent a l'enfant.
+          const phoneFather = normalizePhone(getField([
+            'Téléphone père', 'Tel père', 'Portable père', 'Père',
+            'Téléphone parent 1', 'Tel parent 1', 'Parent 1',
+            'Téléphone responsable légal 1', 'Tel responsable légal 1', 'Responsable légal 1',
+            'Téléphone légal 1', 'Tel légal 1', 'Légal 1', 'Responsable 1', 'Tel responsable 1',
+            'phoneFather',
+          ]));
+          const phoneMother = normalizePhone(getField([
+            'Téléphone mère', 'Tel mère', 'Portable mère', 'Mère',
+            'Téléphone parent 2', 'Tel parent 2', 'Parent 2',
+            'Téléphone responsable légal 2', 'Tel responsable légal 2', 'Responsable légal 2',
+            'Téléphone légal 2', 'Tel légal 2', 'Légal 2', 'Responsable 2', 'Tel responsable 2',
+            'phoneMother',
+          ]));
+          let phone = normalizePhone(getField([
+            'Téléphone', 'Téléphone enfant', 'Tel enfant', 'Portable enfant', 'Téléphone ramasseur',
+            'phone', 'Téléphone 1', 'Tel', 'Portable', 'Mobile',
+          ]));
           if (!phone) {
-            phone = getFieldPartial(['tel', 'phone', 'mobile', 'gsm', 'portable']).replace(/;/g, '').trim();
+            phone = normalizePhone(getFieldPartial(['tel', 'phone', 'mobile', 'gsm', 'portable'], PARENT_HEADER));
           }
-          // Restaurer le 0 initial perdu quand Excel stocke le numero comme un nombre (ex: 651904945 -> 0651904945).
-          if (/^\d{9}$/.test(phone)) {
-            phone = '0' + phone;
-          }
+
+          // Ancien (a deja participe). On ne touche au flag que si la colonne existe.
+          const ancienPresent = hasField(['Ancien', 'Ancienne', 'Vétéran', 'Veteran', 'Déjà participé']);
+          const ancienRaw = getField(['Ancien', 'Ancienne', 'Vétéran', 'Veteran', 'Déjà participé']).trim().toLowerCase();
+          const isVeteran = ['a', 'oui', 'o', 'x', '1', 'true', 'vrai', 'yes', 'ancien'].includes(ancienRaw);
 
           // Validation: nom et prenom obligatoires
           if (!firstName || !lastName) {
@@ -599,6 +631,9 @@ router.post(
               where: { id: existingId },
               data: {
                 phone: phone || undefined,
+                phoneFather: phoneFather || undefined,
+                phoneMother: phoneMother || undefined,
+                isVeteran: ancienPresent ? isVeteran : undefined,
                 address: address || undefined,
                 postalCode: postalCode || undefined,
                 city: city || undefined,
@@ -623,6 +658,9 @@ router.post(
               birthDate: parseBirthDate(getField(['dateNaissance', 'datenaissance', 'birthDate', 'birth date', 'age', 'date de naissance', 'ne(e)', 'nee'])),
               gender: mapGender(getField(['sexe', 'genre', 'gender'])),
               phone: phone || null,
+              phoneFather: phoneFather || null,
+              phoneMother: phoneMother || null,
+              isVeteran,
               address: address || null,
               postalCode: postalCode || null,
               city: city || null,

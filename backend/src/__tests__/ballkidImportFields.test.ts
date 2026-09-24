@@ -76,3 +76,67 @@ describe('Import ramasseurs - equipement (en-tetes avec espaces, fichier Tenus)'
     expect(beta).toMatchObject({ tshirtSize: '14', shortSize: '12', tracksuitSize: '14', shoeSize: '38' });
   });
 });
+
+describe('Import ramasseurs - telephones enfant / responsables legaux', () => {
+  it('mappe telephone -> phone, pere/legal 1 -> phoneFather, mere/legal 2 -> phoneMother', async () => {
+    const buf = await makeXlsx(
+      ['NOM', 'PRENOM', 'MAIL', 'TELEPHONE', 'TELEPHONE PERE', 'TELEPHONE MERE'],
+      [['Tel', 'Un', 'un@tel.test', '0611111111', '0622222222', '0633333333']]
+    );
+    const data = await importFile(buf);
+    expect(data.errors).toBe(0);
+
+    const bk = await prisma.ballkid.findFirst({ where: { email: 'un@tel.test' } });
+    expect(bk).toMatchObject({ phone: '0611111111', phoneFather: '0622222222', phoneMother: '0633333333' });
+  });
+
+  it('accepte les libelles "responsable legal 1/2" et restaure le 0 initial perdu par Excel', async () => {
+    const buf = await makeXlsx(
+      ['Nom', 'Prénom', 'Email', 'Tél enfant', 'Tél responsable légal 1', 'Tél responsable légal 2'],
+      [['Tel', 'Deux', 'deux@tel.test', 611111112, 622222222, 633333332]]
+    );
+    const data = await importFile(buf);
+    expect(data.errors).toBe(0);
+
+    const bk = await prisma.ballkid.findFirst({ where: { email: 'deux@tel.test' } });
+    expect(bk).toMatchObject({ phone: '0611111112', phoneFather: '0622222222', phoneMother: '0633333332' });
+  });
+
+  it("ne prend PAS le numero d'un parent comme telephone de l'enfant quand la colonne enfant est absente", async () => {
+    const buf = await makeXlsx(
+      ['NOM', 'PRENOM', 'MAIL', 'TELEPHONE PERE'],
+      [['Tel', 'Trois', 'trois@tel.test', '0644444444']]
+    );
+    const data = await importFile(buf);
+    expect(data.errors).toBe(0);
+
+    const bk = await prisma.ballkid.findFirst({ where: { email: 'trois@tel.test' } });
+    expect(bk?.phone).toBeNull();
+    expect(bk?.phoneFather).toBe('0644444444');
+  });
+});
+
+describe('Import ramasseurs - ancien', () => {
+  it('ANCIEN = A / oui / x / 1 -> isVeteran true ; vide -> false ; colonne absente -> inchange', async () => {
+    const buf = await makeXlsx(
+      ['NOM', 'PRENOM', 'MAIL', 'ANCIEN'],
+      [
+        ['Anc', 'A', 'a@anc.test', 'A'],
+        ['Anc', 'B', 'b@anc.test', 'oui'],
+        ['Anc', 'C', 'c@anc.test', ''],
+      ]
+    );
+    const data = await importFile(buf);
+    expect(data.errors).toBe(0);
+
+    expect((await prisma.ballkid.findFirst({ where: { email: 'a@anc.test' } }))?.isVeteran).toBe(true);
+    expect((await prisma.ballkid.findFirst({ where: { email: 'b@anc.test' } }))?.isVeteran).toBe(true);
+    expect((await prisma.ballkid.findFirst({ where: { email: 'c@anc.test' } }))?.isVeteran).toBe(false);
+
+    // Re-import SANS colonne ANCIEN : le flag ne doit pas etre ecrase
+    const buf2 = await makeXlsx(['NOM', 'PRENOM', 'MAIL', 'VILLE'], [['Anc', 'A', 'a@anc.test', 'Nice']]);
+    const data2 = await importFile(buf2);
+    expect(data2.updated).toBe(1);
+    expect((await prisma.ballkid.findFirst({ where: { email: 'a@anc.test' } }))?.isVeteran).toBe(true);
+  });
+});
