@@ -254,3 +254,15 @@ describe('Import ramasseurs - en-tetes TEL / TEL 1 / TEL 2 (convention retenue a
     expect(bk?.phoneFather).toBe('0655555555');
   });
 });
+
+describe('Import ramasseurs - re-import : les colonnes lues a la creation ne sont pas signalees ignorees', () => {
+  it('SEXE est lu et mis a jour aussi sur une fiche existante', async () => {
+    const buf1 = await makeXlsx(['NOM', 'PRENOM', 'MAIL', 'SEXE'], [['Genre', 'Test', 'genre@test.test', 'M']]);
+    await importFile(buf1);
+    const buf2 = await makeXlsx(['NOM', 'PRENOM', 'MAIL', 'SEXE'], [['Genre', 'Test', 'genre@test.test', 'F']]);
+    const data = await importFile(buf2);
+    expect(data.updated).toBe(1);
+    expect(data.unmappedColumns).not.toContain('SEXE');
+    expect((await prisma.ballkid.findFirst({ where: { email: 'genre@test.test' } }))?.gender).toBe('FEMALE');
+  });
+});

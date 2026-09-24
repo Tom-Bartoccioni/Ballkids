@@ -623,6 +623,8 @@ router.post(
           const nameKey = `${normalizeName(firstName)}|${normalizeName(lastName)}`;
           const birthDateRaw = getField(['dateNaissance', 'datenaissance', 'birthDate', 'birth date', 'age', 'date de naissance', 'ne(e)', 'nee']).trim();
           const birthDate = birthDateRaw ? parseBirthDate(birthDateRaw) : null;
+          const genderRaw = getField(['sexe', 'genre', 'gender']).trim();
+          const gender = genderRaw ? mapGender(genderRaw) : null;
 
           // Rapprochement avec une fiche existante.
           const candidates = nameToIds.get(nameKey) ?? [];
@@ -668,6 +670,7 @@ router.post(
               data: {
                 email: email || undefined,
                 birthDate: birthDate || undefined,
+                gender: gender || undefined,
                 phone: phone || undefined,
                 phoneFather: phoneFather || undefined,
                 phoneMother: phoneMother || undefined,
@@ -694,7 +697,7 @@ router.post(
               lastName,
               email: email || '',
               birthDate: birthDate ?? parseBirthDate(''),
-              gender: mapGender(getField(['sexe', 'genre', 'gender'])),
+              gender: gender ?? mapGender(''),
               phone: phone || null,
               phoneFather: phoneFather || null,
               phoneMother: phoneMother || null,
