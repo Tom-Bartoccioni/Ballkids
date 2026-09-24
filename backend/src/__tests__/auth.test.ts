@@ -198,3 +198,38 @@ describe('PUT /api/auth/password', () => {
     expect(res.status).toBe(401);
   });
 });
+
+describe('PUT /api/auth/users/:userId/password (reinitialisation par un admin)', () => {
+  it("l'admin reinitialise le mot de passe d'un coach ; l'ancien ne marche plus, le nouveau oui", async () => {
+    const created = await request(app)
+      .post('/api/auth/register')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ email: 'reset@test.com', password: 'ancien123', firstName: 'Re', lastName: 'Set', role: 'COACH' });
+    const userId = created.body.data.user.id;
+
+    const res = await request(app)
+      .put(`/api/auth/users/${userId}/password`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ newPassword: 'nouveau456' });
+    expect(res.status).toBe(200);
+    expect(JSON.stringify(res.body)).not.toContain('nouveau456');
+
+    expect((await request(app).post('/api/auth/login').send({ email: 'reset@test.com', password: 'ancien123' })).status).toBe(401);
+    expect((await request(app).post('/api/auth/login').send({ email: 'reset@test.com', password: 'nouveau456' })).status).toBe(200);
+  });
+
+  it('refuse un coach (403), un utilisateur inconnu (404) et un mot de passe trop court (400)', async () => {
+    const coachLogin = await request(app).post('/api/auth/login').send({ email: 'reset@test.com', password: 'nouveau456' });
+    const coachToken = coachLogin.body.data.token;
+    const coachId = coachLogin.body.data.user.id;
+
+    const forbidden = await request(app).put(`/api/auth/users/${coachId}/password`).set('Authorization', `Bearer ${coachToken}`).send({ newPassword: 'autre789' });
+    expect(forbidden.status).toBe(403);
+
+    const missing = await request(app).put('/api/auth/users/inconnu/password').set('Authorization', `Bearer ${adminToken}`).send({ newPassword: 'autre789' });
+    expect(missing.status).toBe(404);
+
+    const short = await request(app).put(`/api/auth/users/${coachId}/password`).set('Authorization', `Bearer ${adminToken}`).send({ newPassword: 'abc' });
+    expect(short.status).toBe(400);
+  });
+});

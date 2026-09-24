@@ -237,4 +237,41 @@ router.put(
   }
 );
 
+// PUT /api/auth/users/:userId/password - Reinitialisation par un ADMIN (sans
+// connaitre l'ancien mot de passe). Demande admin : "comment faire pour
+// recuperer les mots de passe" des coachs.
+router.put(
+  '/users/:userId/password',
+  authenticate,
+  blockInDemo,
+  [
+    body('newPassword')
+      .isLength({ min: 6 })
+      .withMessage('Le nouveau mot de passe doit contenir au moins 6 caractères'),
+  ],
+  async (req: AuthRequest, res: any, next: any) => {
+    try {
+      if (req.user?.role !== 'ADMIN') {
+        throw new AppError('Accès réservé aux administrateurs', 403);
+      }
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        throw new AppError(errors.array()[0].msg, 400);
+      }
+
+      const user = await prisma.user.findUnique({ where: { id: req.params.userId } });
+      if (!user) {
+        throw new AppError('Utilisateur non trouvé', 404);
+      }
+
+      const hashedPassword = await bcrypt.hash(req.body.newPassword, 10);
+      await prisma.user.update({ where: { id: user.id }, data: { password: hashedPassword } });
+
+      res.json({ success: true, message: 'Mot de passe réinitialisé' });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 export default router;
