@@ -6,6 +6,7 @@ import prisma from '../lib/prisma.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { createExcelBuffer } from '../lib/spreadsheet.js';
+import { computeTrainingSummary } from './training.routes.js';
 
 const router = Router();
 
@@ -74,6 +75,57 @@ router.get('/ballkids/xlsx', authenticate, async (req: AuthRequest, res, next) =
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', 'attachment; filename=ramasseurs.xlsx');
+    res.send(buffer);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Helper: synthese des seances de formation pour export (demande admin)
+async function getTrainingExportData(query: any) {
+  const { tournamentId } = query;
+  if (!tournamentId) throw new AppError('Tournoi requis', 400);
+  const { summary } = await computeTrainingSummary(tournamentId as string);
+  const headers = ['Nom', 'Prénom', 'Séance 1', 'Séance 2', 'Séance 3', 'Séance 4', 'Moyenne', 'Séances'];
+  const cell = (score: number | null, absent: boolean) => (absent ? 'ABS' : score == null ? '' : String(score));
+  const rows = summary
+    .slice()
+    .sort((a, b) => a.lastName.localeCompare(b.lastName) || a.firstName.localeCompare(b.firstName))
+    .map((s) => [
+      s.lastName,
+      s.firstName,
+      cell(s.session1, s.absent1),
+      cell(s.session2, s.absent2),
+      cell(s.session3, s.absent3),
+      cell(s.session4, s.absent4),
+      s.average == null ? '' : String(s.average),
+      String(s.sessionsAttended),
+    ]);
+  return { headers, rows };
+}
+
+// GET /api/export/training/csv - Export CSV de la synthese formation
+router.get('/training/csv', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const { headers, rows } = await getTrainingExportData(req.query);
+    const csv = [headers, ...rows]
+      .map((row) => row.map((c) => `"${c}"`).join(';'))
+      .join('\n');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename=formation.csv');
+    res.send('\uFEFF' + csv);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/export/training/xlsx - Export Excel de la synthese formation
+router.get('/training/xlsx', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const { headers, rows } = await getTrainingExportData(req.query);
+    const buffer = await createExcelBuffer('Formation', headers, rows);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename=formation.xlsx');
     res.send(buffer);
   } catch (error) {
     next(error);
