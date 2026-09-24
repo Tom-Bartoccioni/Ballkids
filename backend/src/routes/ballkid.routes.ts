@@ -516,7 +516,7 @@ router.post(
       const nameToId = new Map<string, string>();
       for (const b of existingBallkids) {
         if (b.email) emailToId.set(b.email.toLowerCase(), b.id);
-        nameToId.set(`${b.firstName.toLowerCase()}|${b.lastName.toLowerCase()}`, b.id);
+        nameToId.set(`${normalizeName(b.firstName)}|${normalizeName(b.lastName)}`, b.id);
       }
 
       const created: any[] = [];
@@ -601,13 +601,17 @@ router.post(
             errors.push({ record, error: 'Nom et prenom obligatoires' });
             continue;
           }
-          // Validation: email ou telephone, au moins un
-          if (!email && !phone) {
+
+          const nameKey = `${normalizeName(firstName)}|${normalizeName(lastName)}`;
+          const existingId = (email && emailToId.get(email.toLowerCase())) || nameToId.get(nameKey);
+
+          // Un contact (email ou telephone) n'est exige que pour CREER une fiche.
+          // Un fichier complement (ex: tailles de tenue) ne porte que nom + prenom :
+          // il doit pouvoir mettre a jour une fiche existante.
+          if (!existingId && !email && !phone) {
             errors.push({ record, error: 'Email ou telephone obligatoire' });
             continue;
           }
-
-          const nameKey = `${firstName.toLowerCase()}|${lastName.toLowerCase()}`;
 
           // Champs optionnels (contact + tailles de vetements). Reutilises en creation ET en mise a jour.
           const address = getField(['adresse', 'address']).trim();
@@ -625,11 +629,11 @@ router.post(
           // Re-import : si le ramasseur existe deja (par email ou par nom+prenom), on MET A JOUR
           // les champs fournis (telephone, tailles de vetements...) au lieu de simplement ignorer la ligne.
           // `|| undefined` : ne jamais ecraser une valeur existante avec une chaine vide.
-          const existingId = (email && emailToId.get(email.toLowerCase())) || nameToId.get(nameKey);
           if (existingId) {
             const ballkid = await prisma.ballkid.update({
               where: { id: existingId },
               data: {
+                email: email || undefined,
                 phone: phone || undefined,
                 phoneFather: phoneFather || undefined,
                 phoneMother: phoneMother || undefined,

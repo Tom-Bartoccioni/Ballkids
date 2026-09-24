@@ -140,3 +140,36 @@ describe('Import ramasseurs - ancien', () => {
     expect((await prisma.ballkid.findFirst({ where: { email: 'a@anc.test' } }))?.isVeteran).toBe(true);
   });
 });
+
+describe('Import ramasseurs - fichier complement (Tenus) sans email ni telephone', () => {
+  it('met a jour les ramasseurs existants par nom/prenom (accents et casse ignores) et refuse les inconnus', async () => {
+    await prisma.ballkid.create({
+      data: { firstName: 'Guilhem', lastName: 'Bérard', email: '', gender: 'MALE', status: 'REGISTERED',
+        birthDate: new Date('2011-03-02'), tournamentId },
+    });
+    await prisma.ballkid.create({
+      data: { firstName: 'Monica', lastName: "D'Ancona", email: '', gender: 'FEMALE', status: 'REGISTERED',
+        birthDate: new Date('2011-03-02'), tournamentId },
+    });
+
+    const buf = await makeXlsx(
+      ['NB', 'NOM', 'PRENOM', 'TAILLE TSHIRT', 'TAILLE SHORT', 'TAILLE SURVET', 'POINTURE'],
+      [
+        [1, 'BERARD', 'GUILHEM', 'M', 'M', 'L', 43],
+        [2, 'D ANCONA', 'MONICA', 12, 12, 14, 37],
+        [3, 'INCONNU', 'PERSONNE', 'S', 'S', 'S', 40],
+      ]
+    );
+    const data = await importFile(buf, 'tenus.xlsx');
+
+    expect(data.updated).toBe(2);
+    expect(data.imported).toBe(0);
+    expect(data.errors).toBe(1);
+    expect(data.errorDetails[0].error).toMatch(/Email ou telephone obligatoire/);
+
+    const g = await prisma.ballkid.findFirst({ where: { firstName: 'Guilhem' } });
+    expect(g).toMatchObject({ tshirtSize: 'M', shortSize: 'M', tracksuitSize: 'L', shoeSize: '43' });
+    const m = await prisma.ballkid.findFirst({ where: { firstName: 'Monica' } });
+    expect(m).toMatchObject({ tshirtSize: '12', shoeSize: '37' });
+  });
+});
