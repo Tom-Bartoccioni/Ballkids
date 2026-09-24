@@ -173,3 +173,17 @@ describe('Import ramasseurs - fichier complement (Tenus) sans email ni telephone
     expect(m).toMatchObject({ tshirtSize: '12', shoeSize: '37' });
   });
 });
+
+describe('Import ramasseurs - colonnes non reconnues', () => {
+  it("liste les en-tetes que personne n'a consommes, sans les colonnes mappees ni les en-tetes vides", async () => {
+    const buf = await makeXlsx(
+      ['N°', 'NOM', 'PRENOM', 'MAIL', '2024', 'COULEUR PREFEREE', ' ', 'POINTURE'],
+      [[7, 'Colonne', 'Test', 'col@test.test', 190, 'bleu', 'x', 41]]
+    );
+    const data = await importFile(buf);
+    expect(data.errors).toBe(0);
+    expect(data.unmappedColumns).toEqual(expect.arrayContaining(['N°', '2024', 'COULEUR PREFEREE']));
+    expect(data.unmappedColumns).not.toEqual(expect.arrayContaining(['NOM', 'PRENOM', 'MAIL', 'POINTURE']));
+    expect(data.unmappedColumns).not.toContain(' ');
+  });
+});

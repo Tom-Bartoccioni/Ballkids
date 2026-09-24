@@ -519,6 +519,10 @@ router.post(
         nameToId.set(`${normalizeName(b.firstName)}|${normalizeName(b.lastName)}`, b.id);
       }
 
+      // En-tetes (normalises) effectivement lus par un getField/getFieldPartial :
+      // ce qui reste a la fin est signale a l'utilisateur comme ignore.
+      const usedHeaders = new Set<string>();
+
       const created: any[] = [];
       const updated: any[] = [];
       const errors: any[] = [];
@@ -535,6 +539,9 @@ router.post(
 
           // Recherche exacte : renvoie la 1re valeur non vide parmi des alias d'en-tete.
           const getField = (keys: string[]) => {
+            // Un alias present (meme vide) est considere consomme : une case vide
+            // ne doit pas faire passer sa colonne pour inconnue.
+            for (const key of keys) { const nk = normalizeHeader(key); if (nk in normalizedRecord) usedHeaders.add(nk); }
             for (const key of keys) {
               const nk = normalizeHeader(key);
               if (nk in normalizedRecord && normalizedRecord[nk] !== '') {
@@ -556,7 +563,7 @@ router.post(
               if (exclude && exclude.test(k)) continue;
               if (substrings.some((s) => k.includes(s))) {
                 const val = (v || '').toString().trim();
-                if (val) return val;
+                if (val) { usedHeaders.add(k); return val; }
               }
             }
             return '';
@@ -687,6 +694,9 @@ router.post(
         }
       }
 
+      const unmappedColumns = Object.keys(records[0] ?? {})
+        .filter((h) => normalizeHeader(h) && !usedHeaders.has(normalizeHeader(h)));
+
       res.json({
         success: true,
         data: {
@@ -696,6 +706,7 @@ router.post(
           errors: errors.length,
           skippedDetails: skipped,
           errorDetails: errors,
+          unmappedColumns,
         },
       });
     } catch (error) {
