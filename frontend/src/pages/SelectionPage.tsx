@@ -16,6 +16,23 @@ type Tab = 'notation' | 'classement'
 type SortKey = 'lastName' | 'firstName' | 'average' | 'status' | 'rank' | 'current'
 type SortOrder = 'asc' | 'desc'
 
+// Grille de sélection de l'admin (même liste que DEFAULT_SELECTION_CRITERIA côté serveur).
+// Proposée quand aucun critère n'existe, et rechargeable depuis l'éditeur.
+const ADMIN_GRID: Array<{ name: string; maxScore: number; weight: number }> = [
+  { name: 'Poubelle avec rebond', maxScore: 20, weight: 1 },
+  { name: 'Poubelle sans rebond', maxScore: 20, weight: 3 },
+  { name: 'Roulé 1/2', maxScore: 20, weight: 1 },
+  { name: 'Roulé', maxScore: 20, weight: 2 },
+  { name: 'Vitesse (roulé)', maxScore: 20, weight: 3 },
+  { name: 'Rebond', maxScore: 20, weight: 2 },
+  { name: 'Vitesse', maxScore: 20, weight: 3 },
+  { name: 'Parcours poubelle', maxScore: 20, weight: 2 },
+  { name: 'Parcours boîtes 1', maxScore: 20, weight: 1 },
+  { name: 'Parcours boîtes 2', maxScore: 20, weight: 2 },
+  { name: 'Parcours vitesse', maxScore: 20, weight: 3 },
+  { name: 'Ancien (bonus)', maxScore: 40, weight: 1 },
+]
+
 export default function SelectionPage() {
   const { isAdmin } = useAuth()
   const { toast } = useToast()
@@ -203,21 +220,7 @@ export default function SelectionPage() {
         }))
       )
     } else {
-      // Grille de sélection de l'admin (même liste que DEFAULT_SELECTION_CRITERIA côté serveur)
-      setCriteriaDraft([
-        { name: 'Poubelle avec rebond', maxScore: 20, weight: 1 },
-        { name: 'Poubelle sans rebond', maxScore: 20, weight: 3 },
-        { name: 'Roulé 1/2', maxScore: 20, weight: 1 },
-        { name: 'Roulé', maxScore: 20, weight: 2 },
-        { name: 'Vitesse (roulé)', maxScore: 20, weight: 3 },
-        { name: 'Rebond', maxScore: 20, weight: 2 },
-        { name: 'Vitesse', maxScore: 20, weight: 3 },
-        { name: 'Parcours poubelle', maxScore: 20, weight: 2 },
-        { name: 'Parcours boîtes 1', maxScore: 20, weight: 1 },
-        { name: 'Parcours boîtes 2', maxScore: 20, weight: 2 },
-        { name: 'Parcours vitesse', maxScore: 20, weight: 3 },
-        { name: 'Ancien (bonus)', maxScore: 40, weight: 1 },
-      ])
+      setCriteriaDraft(ADMIN_GRID.map((c) => ({ ...c })))
     }
     setShowCriteriaModal(true)
   }
@@ -908,12 +911,25 @@ export default function SelectionPage() {
             </CardContent>
             <div className="flex-shrink-0 border-t bg-white p-4 rounded-b-lg">
               <div className="flex justify-between">
-                <Button
-                  variant="outline"
-                  onClick={() => setCriteriaDraft([...criteriaDraft, { name: '', maxScore: 5, weight: 1 }])}
-                >
-                  Ajouter un critère
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setCriteriaDraft([...criteriaDraft, { name: '', maxScore: 20, weight: 1 }])}
+                  >
+                    Ajouter un critère
+                  </Button>
+                  <Button
+                    variant="outline"
+                    title="Remplace la liste par la grille du classeur : 11 critères avec coefficients + bonus ancien/jour"
+                    onClick={() => {
+                      if (criteriaDraft.length === 0 || confirm('Remplacer les critères actuels par la grille par défaut ?')) {
+                        setCriteriaDraft(ADMIN_GRID.map((c) => ({ ...c })))
+                      }
+                    }}
+                  >
+                    Charger la grille par défaut
+                  </Button>
+                </div>
                 <div className="flex gap-2">
                   <Button variant="outline" onClick={() => setShowCriteriaModal(false)}>
                     Annuler
