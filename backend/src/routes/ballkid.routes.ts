@@ -43,6 +43,12 @@ const normalizeKey = (value: string) =>
     .toLowerCase()
     .trim();
 
+// Cle d'EN-TETE pour l'import : comme normalizeKey, puis suppression de tout ce
+// qui n'est pas lettre/chiffre. Ainsi « TAILLE T-SHIRT », « Taille Tshirt » et
+// « tailletshirt » designent la meme colonne. Appliquee a l'identique aux
+// en-tetes du fichier ET aux alias, pour garantir la symetrie.
+const normalizeHeader = (value: string) => normalizeKey(value).replace(/[^a-z0-9]+/g, '');
+
 // Normalise un nom de personne (ou un nom de fichier photo) pour le matching :
 // retire les accents, met en minuscules, supprime les suffixes de copie de l'OS
 // (ex. \u00ab (1) \u00bb), convertit tout s\u00e9parateur/ponctuation (_ - . ' espaces\u2026) en un
@@ -510,24 +516,32 @@ router.post(
         try {
           const normalizedRecord: Record<string, string> = {};
           for (const [key, value] of Object.entries(record)) {
-            normalizedRecord[normalizeKey(key)] = value as string;
+            const nk = normalizeHeader(key);
+            if (!nk) continue; // en-tete vide ou purement decoratif : colonne inaccessible
+            normalizedRecord[nk] = value as string;
           }
 
+          // Recherche exacte : renvoie la 1re valeur non vide parmi des alias d'en-tete.
           const getField = (keys: string[]) => {
             for (const key of keys) {
-              const normalizedKey = normalizeKey(key);
-              if (normalizedKey in normalizedRecord) {
-                return (normalizedRecord[normalizedKey] || '').toString();
+              const nk = normalizeHeader(key);
+              if (nk in normalizedRecord && normalizedRecord[nk] !== '') {
+                return (normalizedRecord[nk] || '').toString();
               }
             }
             return '';
           };
 
-          // Recherche « partielle » : renvoie la 1re valeur non vide dont l'en-tete contient un des radicaux.
-          // Utile pour le telephone dont les en-tetes varient (Mobile, GSM, Telephone portable, TELEPHONE 1/2/3...).
-          const getFieldPartial = (substrings: string[]) => {
+          // Presence d'un en-tete (meme avec valeur vide) : sert a distinguer
+          // « colonne absente » de « case vide » pour les booleens.
+          const hasField = (keys: string[]) => keys.some((key) => normalizeHeader(key) in normalizedRecord);
+
+          // Recherche « partielle » : 1re valeur non vide dont l'en-tete CONTIENT un des radicaux,
+          // en excluant les en-tetes qui matchent `exclude`. Utile pour le telephone dont les
+          // en-tetes varient (Mobile, GSM, Telephone portable, TELEPHONE 1/2/3...).
+          const getFieldPartial = (substrings: string[], exclude?: RegExp) => {
             for (const [k, v] of Object.entries(normalizedRecord)) {
-              if (!k) continue;
+              if (exclude && exclude.test(k)) continue;
               if (substrings.some((s) => k.includes(s))) {
                 const val = (v || '').toString().trim();
                 if (val) return val;
@@ -571,10 +585,10 @@ router.post(
           const city = getField(['ville', 'city']).trim();
           const club = getField(['club']).trim();
           const licenseNumber = getField(['licence', 'license', 'licenseNumber', 'numeroLicence', 'n° licence', 'numero licence']).trim();
-          const tshirtSize = getField(['tailleTshirt', 'tailletshirt', 'tshirtSize', 't-shirt']).trim();
-          const shortSize = getField(['tailleShort', 'tailleshort', 'shortSize']).trim();
-          const tracksuitSize = getField(['tailleSurvetement', 'taillesurvetement', 'tracksuitSize']).trim();
-          const shoeSize = getField(['pointure', 'shoeSize']).trim();
+          const tshirtSize = getField(['Taille T-shirt', 'Taille Tshirt', 'tshirtSize', 'T-shirt', 'Tshirt']).trim();
+          const shortSize = getField(['Taille Short', 'shortSize', 'Short']).trim();
+          const tracksuitSize = getField(['Taille Survêtement', 'Taille Survet', 'tracksuitSize', 'Survêtement', 'Survet']).trim();
+          const shoeSize = getField(['Pointure', 'shoeSize', 'Taille chaussures', 'Chaussures']).trim();
 
           // Re-import : si le ramasseur existe deja (par email ou par nom+prenom), on MET A JOUR
           // les champs fournis (telephone, tailles de vetements...) au lieu de simplement ignorer la ligne.
