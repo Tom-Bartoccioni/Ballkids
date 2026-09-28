@@ -10,10 +10,32 @@ function addDays(date: Date, days: number): Date {
 }
 
 /**
- * Critères par défaut, communs à la sélection et aux séances de formation.
- * Valeurs reprises telles quelles depuis `prisma/seed.ts` (ne pas réinventer).
+ * Grille de sélection de l'admin (reprise de son classeur Excel) : 11 critères
+ * notés avec leur coefficient, + 2 bonus (ancien, jour). Le total = Σ note × coef,
+ * comme la colonne TOTAL du classeur. Les maxima par critère ne figurent pas dans
+ * le classeur : 20 par défaut, modifiables dans l'éditeur de critères.
  */
-const DEFAULT_CRITERIA = [
+export const DEFAULT_SELECTION_CRITERIA = [
+  { name: 'Poubelle avec rebond',  abbreviation: 'POUB AVEC R',   order: 1,  maxScore: 20, weight: 1, isCalculated: false },
+  { name: 'Poubelle sans rebond',  abbreviation: 'POUB SANS R',   order: 2,  maxScore: 20, weight: 3, isCalculated: false },
+  { name: 'Roulé 1/2',             abbreviation: 'ROULE 1/2',     order: 3,  maxScore: 20, weight: 1, isCalculated: false },
+  { name: 'Roulé',                 abbreviation: 'ROULE',         order: 4,  maxScore: 20, weight: 2, isCalculated: false },
+  { name: 'Vitesse (roulé)',       abbreviation: 'VIT ROULE',     order: 5,  maxScore: 20, weight: 3, isCalculated: false },
+  { name: 'Rebond',                abbreviation: 'REBOND',        order: 6,  maxScore: 20, weight: 2, isCalculated: false },
+  { name: 'Vitesse',               abbreviation: 'VITESSE',       order: 7,  maxScore: 20, weight: 3, isCalculated: false },
+  { name: 'Parcours poubelle',     abbreviation: 'PARC POUB',     order: 8,  maxScore: 20, weight: 2, isCalculated: false },
+  { name: 'Parcours boîtes 1',     abbreviation: 'PARC BOITES 1', order: 9,  maxScore: 20, weight: 1, isCalculated: false },
+  { name: 'Parcours boîtes 2',     abbreviation: 'PARC BOITES 2', order: 10, maxScore: 20, weight: 2, isCalculated: false },
+  { name: 'Parcours vitesse',      abbreviation: 'PARC VITESSE',  order: 11, maxScore: 20, weight: 3, isCalculated: false },
+  { name: 'Ancien (bonus)',        abbreviation: 'ANCIEN',        order: 12, maxScore: 40, weight: 1, isCalculated: false },
+  { name: 'Jour (bonus)',          abbreviation: 'JOUR',          order: 13, maxScore: 9,  weight: 1, isCalculated: false },
+] as const;
+
+/**
+ * Critères par défaut des séances de formation (formule normalisée sur 20,
+ * différente de la sélection). Valeurs reprises telles quelles depuis `prisma/seed.ts`.
+ */
+const DEFAULT_TRAINING_CRITERIA = [
   { name: 'Vitesse', abbreviation: 'VITESSE', order: 1, maxScore: 5, isCalculated: false },
   { name: 'Précision', abbreviation: 'PRECISION', order: 2, maxScore: 5, isCalculated: false },
   { name: 'Réflexes', abbreviation: 'REFLEXES', order: 3, maxScore: 5, isCalculated: false },
@@ -65,7 +87,7 @@ export async function initializeTournamentDefaults(
     },
   });
 
-  for (const criteria of DEFAULT_CRITERIA) {
+  for (const criteria of DEFAULT_SELECTION_CRITERIA) {
     await tx.selectionCriteria.create({
       data: {
         ...criteria,
@@ -85,7 +107,7 @@ export async function initializeTournamentDefaults(
       },
     });
 
-    for (const criteria of DEFAULT_CRITERIA) {
+    for (const criteria of DEFAULT_TRAINING_CRITERIA) {
       await tx.trainingCriteria.create({
         data: {
           ...criteria,

@@ -264,6 +264,12 @@ export default function BallkidsPage() {
           description: names,
         })
       }
+      if (data.unmappedColumns?.length > 0) {
+        toast({
+          title: `${data.unmappedColumns.length} colonne(s) non reconnue(s), ignoree(s)`,
+          description: data.unmappedColumns.join(', '),
+        })
+      }
       queryClient.invalidateQueries({ queryKey: ['ballkids'] })
       queryClient.invalidateQueries({ queryKey: ['ballkids', 'pending'] })
     },
@@ -368,6 +374,12 @@ export default function BallkidsPage() {
                 variant="outline"
                 onClick={handleImportClick}
                 disabled={importMutation.isPending || !tournamentData?.id}
+                title={
+                  'Colonnes reconnues : Nom, Prenom, Email, Date de naissance, Sexe, Club, TEL (enfant), ' +
+                  'TEL 1 / TEL 2 (responsables legaux, ou pere / mere), Adresse, CP, Ville, Licence, Ancien, ' +
+                  'Taille T-shirt, Taille Short, Taille Survetement, Pointure. Casse, accents et espaces ignores. ' +
+                  'Un fichier ne contenant que Nom + Prenom + tailles met a jour les fiches existantes.'
+                }
               >
                 <Upload className="w-4 h-4 mr-2" />
                 {importMutation.isPending ? 'Import...' : 'Importer'}

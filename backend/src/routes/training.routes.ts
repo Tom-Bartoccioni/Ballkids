@@ -90,101 +90,111 @@ router.get('/:tournamentId/:sessionNumber', authenticate, async (req, res, next)
   }
 });
 
+/**
+ * Synthese des seances de formation d'un tournoi : une entree par ramasseur
+ * (SELECTED/RESERVE) avec la moyenne par seance, les absences, la moyenne
+ * globale et le nombre de seances jouees. Partagee entre l'API et l'export.
+ */
+export async function computeTrainingSummary(tournamentId: string) {
+  const ballkids = await prisma.ballkid.findMany({
+    where: {
+      tournamentId: tournamentId,
+      status: { in: [BallkidStatus.SELECTED, BallkidStatus.RESERVE] },
+    },
+    include: {
+      trainingScores: {
+        include: { trainingSession: true },
+      },
+      absences: {
+        where: { type: AbsenceType.TRAINING },
+        include: { trainingSession: true },
+      },
+    },
+  });
+
+  // Get all training sessions to include absence info
+  const sessions = await prisma.trainingSession.findMany({
+    where: { tournamentId: tournamentId },
+    include: {
+      _count: { select: { scores: true, absences: true } },
+    },
+  });
+
+  const summary = ballkids.map((b) => {
+    const sessionScores: Record<number, number[]> = { 1: [], 2: [], 3: [], 4: [] };
+    const sessionAbsences: Record<number, boolean> = { 1: false, 2: false, 3: false, 4: false };
+    
+    b.trainingScores.forEach((score) => {
+      const sessionNum = score.trainingSession.sessionNumber;
+      if (score.totalScore !== null && score.totalScore !== undefined) {
+        sessionScores[sessionNum].push(score.totalScore);
+      }
+    });
+
+    b.absences.forEach((absence) => {
+      if (absence.trainingSession) {
+        sessionAbsences[absence.trainingSession.sessionNumber] = true;
+      }
+    });
+
+    const sessionAverages: Record<number, number | null> = { 1: null, 2: null, 3: null, 4: null };
+    Object.entries(sessionScores).forEach(([sessionNum, scores]) => {
+      const values = scores as number[];
+      if (values.length > 0) {
+        sessionAverages[parseInt(sessionNum)] =
+          values.reduce((a, b) => a + b, 0) / values.length;
+      }
+    });
+
+    const validScores = Object.values(sessionAverages).filter((s) => s !== null) as number[];
+    const average = validScores.length > 0
+      ? validScores.reduce((a, b) => a + b, 0) / validScores.length
+      : null;
+
+    return {
+      id: b.id,
+      firstName: b.firstName,
+      lastName: b.lastName,
+      photoUrl: b.photoUrl,
+      status: b.status,
+      session1: sessionAverages[1],
+      session2: sessionAverages[2],
+      session3: sessionAverages[3],
+      session4: sessionAverages[4],
+      absent1: sessionAbsences[1],
+      absent2: sessionAbsences[2],
+      absent3: sessionAbsences[3],
+      absent4: sessionAbsences[4],
+      average: average ? Math.round(average * 100) / 100 : null,
+      sessionsAttended: validScores.length,
+    };
+  });
+
+  summary.sort((a, b) => (b.average || 0) - (a.average || 0));
+
+  // Compute completion status for each session
+  const totalBallkids = ballkids.length;
+  const sessionCompletion: Record<number, boolean> = { 1: false, 2: false, 3: false, 4: false };
+  
+  for (let sessionNum = 1; sessionNum <= 4; sessionNum++) {
+    const scoreKey = `session${sessionNum}` as keyof typeof summary[number];
+    const absentKey = `absent${sessionNum}` as keyof typeof summary[number];
+    
+    // Count how many ballkids have a score OR are absent for this session
+    const completedCount = summary.filter(
+      (item) => item[scoreKey] !== null || item[absentKey] === true
+    ).length;
+    
+    sessionCompletion[sessionNum] = completedCount >= totalBallkids && totalBallkids > 0;
+  }
+
+  return { summary, sessionCompletion };
+}
+
 // GET /api/training/:tournamentId/summary - Synthèse des 4 séances
 router.get('/:tournamentId/summary/all', authenticate, async (req, res, next) => {
   try {
-    const ballkids = await prisma.ballkid.findMany({
-      where: {
-        tournamentId: req.params.tournamentId,
-        status: { in: [BallkidStatus.SELECTED, BallkidStatus.RESERVE] },
-      },
-      include: {
-        trainingScores: {
-          include: { trainingSession: true },
-        },
-        absences: {
-          where: { type: AbsenceType.TRAINING },
-          include: { trainingSession: true },
-        },
-      },
-    });
-
-    // Get all training sessions to include absence info
-    const sessions = await prisma.trainingSession.findMany({
-      where: { tournamentId: req.params.tournamentId },
-      include: {
-        _count: { select: { scores: true, absences: true } },
-      },
-    });
-
-    const summary = ballkids.map((b) => {
-      const sessionScores: Record<number, number[]> = { 1: [], 2: [], 3: [], 4: [] };
-      const sessionAbsences: Record<number, boolean> = { 1: false, 2: false, 3: false, 4: false };
-      
-      b.trainingScores.forEach((score) => {
-        const sessionNum = score.trainingSession.sessionNumber;
-        if (score.totalScore !== null && score.totalScore !== undefined) {
-          sessionScores[sessionNum].push(score.totalScore);
-        }
-      });
-
-      b.absences.forEach((absence) => {
-        if (absence.trainingSession) {
-          sessionAbsences[absence.trainingSession.sessionNumber] = true;
-        }
-      });
-
-      const sessionAverages: Record<number, number | null> = { 1: null, 2: null, 3: null, 4: null };
-      Object.entries(sessionScores).forEach(([sessionNum, scores]) => {
-        const values = scores as number[];
-        if (values.length > 0) {
-          sessionAverages[parseInt(sessionNum)] =
-            values.reduce((a, b) => a + b, 0) / values.length;
-        }
-      });
-
-      const validScores = Object.values(sessionAverages).filter((s) => s !== null) as number[];
-      const average = validScores.length > 0
-        ? validScores.reduce((a, b) => a + b, 0) / validScores.length
-        : null;
-
-      return {
-        id: b.id,
-        firstName: b.firstName,
-        lastName: b.lastName,
-        photoUrl: b.photoUrl,
-        status: b.status,
-        session1: sessionAverages[1],
-        session2: sessionAverages[2],
-        session3: sessionAverages[3],
-        session4: sessionAverages[4],
-        absent1: sessionAbsences[1],
-        absent2: sessionAbsences[2],
-        absent3: sessionAbsences[3],
-        absent4: sessionAbsences[4],
-        average: average ? Math.round(average * 100) / 100 : null,
-        sessionsAttended: validScores.length,
-      };
-    });
-
-    summary.sort((a, b) => (b.average || 0) - (a.average || 0));
-
-    // Compute completion status for each session
-    const totalBallkids = ballkids.length;
-    const sessionCompletion: Record<number, boolean> = { 1: false, 2: false, 3: false, 4: false };
-    
-    for (let sessionNum = 1; sessionNum <= 4; sessionNum++) {
-      const scoreKey = `session${sessionNum}` as keyof typeof summary[number];
-      const absentKey = `absent${sessionNum}` as keyof typeof summary[number];
-      
-      // Count how many ballkids have a score OR are absent for this session
-      const completedCount = summary.filter(
-        (item) => item[scoreKey] !== null || item[absentKey] === true
-      ).length;
-      
-      sessionCompletion[sessionNum] = completedCount >= totalBallkids && totalBallkids > 0;
-    }
-
+    const { summary, sessionCompletion } = await computeTrainingSummary(req.params.tournamentId);
     res.json({ success: true, data: { summary, sessionCompletion } });
   } catch (error) {
     next(error);

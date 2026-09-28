@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { DEFAULT_SELECTION_CRITERIA } from '../src/lib/tournamentInit';
 import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
@@ -140,7 +141,7 @@ async function main() {
   });
 
   if (existingSelectionCriteria === 0) {
-    for (const criteria of defaultCriteria) {
+    for (const criteria of DEFAULT_SELECTION_CRITERIA) {
       await prisma.selectionCriteria.create({
         data: {
           ...criteria,

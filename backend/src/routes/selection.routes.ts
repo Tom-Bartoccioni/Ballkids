@@ -143,8 +143,9 @@ router.post(
       const scorerId = req.user!.id;
       const tournamentId = req.params.tournamentId;
 
-      if (score < 0 || score > 20) {
-        throw new AppError('La note doit être entre 0 et 20', 400);
+      // Totaux bruts comme dans le classeur de l'admin (jusqu'a 210) : pas de plafond
+      if (typeof score !== 'number' || score < 0) {
+        throw new AppError('La note doit être un nombre positif', 400);
       }
 
       // Trouver ou créer la session de sélection
@@ -322,18 +323,8 @@ router.post(
       const errors: any[] = [];
       const scorerId = req.user!.id;
 
-      // Pre-scan: detect max score to auto-normalize if scores are not on 0-20 scale
-      let maxScoreInFile = 0;
-      for (const record of records) {
-        const nr: Record<string, string> = {};
-        for (const [key, value] of Object.entries(record)) {
-          nr[normalizeKey(key)] = value as string;
-        }
-        const raw = ['total', 'score', 'note', 'resultat', 'resultat'].reduce((v, k) => v || nr[k] || '', '');
-        const val = parseFloat((raw || '').toString().replace(',', '.'));
-        if (!isNaN(val) && val > maxScoreInFile) maxScoreInFile = val;
-      }
-      const needsNormalization = maxScoreInFile > 20;
+      // Les totaux sont importes BRUTS : la colonne TOTAL du classeur de l'admin
+      // (jusqu'a 210) doit rester comparable a ce qu'il lit dans Excel.
 
       for (const record of records) {
         try {
@@ -363,11 +354,6 @@ router.post(
             throw new AppError('Note invalide', 400);
           }
 
-          // Normalize to 0-20 scale if needed
-          if (needsNormalization) {
-            scoreValue = (scoreValue / maxScoreInFile) * 20;
-            scoreValue = Math.round(scoreValue * 100) / 100;
-          }
 
           let ballkidId: string | undefined;
           if (email) {
@@ -508,8 +494,8 @@ router.put(
   async (req: AuthRequest, res, next) => {
     try {
       const { score } = req.body;
-      if (typeof score !== 'number' || score < 0 || score > 20) {
-        throw new AppError('La note doit être entre 0 et 20', 400);
+      if (typeof score !== 'number' || score < 0) {
+        throw new AppError('La note doit être un nombre positif', 400);
       }
 
       const selectionScore = await prisma.selectionScore.update({
@@ -541,14 +527,15 @@ router.delete(
   }
 );
 
-// POST /api/selection/:tournamentId/select - Sélectionner les 78 meilleurs + 2 remplaçants
+// POST /api/selection/:tournamentId/select - Sélectionner les N meilleurs + M remplaçants
 router.post(
   '/:tournamentId/select',
   authenticate,
   requireAdmin,
   async (req: AuthRequest, res, next) => {
     try {
-      const { count = 80, reserveCount = 2 } = req.body;
+      // count = nombre de SELECTIONNES, reserveCount = remplacants EN PLUS (78 + N pour l'admin)
+      const { count = 78, reserveCount = 0 } = req.body;
       const tournamentId = req.params.tournamentId;
 
       // Récupérer le classement (inclure déjà sélectionnés/remplaçants)
@@ -569,7 +556,7 @@ router.post(
 
       ranking.sort((a, b) => b.avgScore - a.avgScore);
 
-      const selectedCount = Math.max(0, count - reserveCount);
+      const selectedCount = Math.max(0, Number(count) || 0);
       const selectedIds = ranking.slice(0, selectedCount).map((r) => r.id);
       const remaining = ranking.length - selectedIds.length;
       const reserveTake = Math.max(0, Math.min(reserveCount, remaining));

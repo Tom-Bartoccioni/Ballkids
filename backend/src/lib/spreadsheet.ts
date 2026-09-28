@@ -33,10 +33,22 @@ export function getSheetNames(buffer: Buffer): string[] {
  * Convertit un numéro de série Excel en date ISO (YYYY-MM-DD).
  * Excel stocke les dates comme nombre de jours depuis le 1899-12-30.
  */
-function excelDateToISO(serial: number): string {
-  const epoch = new Date(1899, 11, 30);
-  const date = new Date(epoch.getTime() + serial * 86400000);
-  return date.toISOString().split('T')[0];
+// Un serial Excel est un nombre de JOURS depuis le 30/12/1899 : on reste en
+// arithmetique UTC de bout en bout pour ne jamais subir le fuseau du serveur.
+function excelSerialToISO(serial: number): string {
+  const days = Math.floor(serial);
+  const ms = Date.UTC(1899, 11, 30) + days * 86400000;
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+// Une cellule deja typee Date par SheetJS est construite en heure LOCALE :
+// on lit donc ses composantes locales (toISOString la ferait basculer en UTC,
+// soit la veille pour tout fuseau a l'est de Greenwich).
+function localDateToISO(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 async function parseExcel(buffer: Buffer, targetSheet?: string): Promise<Record<string, string>[]> {
@@ -62,14 +74,14 @@ async function parseExcel(buffer: Buffer, targetSheet?: string): Promise<Record<
         if (key.startsWith('__EMPTY')) continue;
 
         if (value instanceof Date) {
-          record[key] = value.toISOString().split('T')[0];
+          record[key] = localDateToISO(value);
         } else if (typeof value === 'number') {
           // Detect Excel date serials (roughly between 1900-01-01 and 2100-01-01)
           // and only convert if the column name hints at a date
           const keyLower = key.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
           const isDateColumn = /age|naissance|birth|date|dob|ne\(e\)|nee/.test(keyLower);
           if (isDateColumn && value > 1 && value < 73000) {
-            record[key] = excelDateToISO(value);
+            record[key] = excelSerialToISO(value);
           } else {
             record[key] = value.toString();
           }

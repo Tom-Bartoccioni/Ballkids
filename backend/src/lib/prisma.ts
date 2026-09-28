@@ -3,25 +3,27 @@ import path from 'path';
 
 // Resolution explicite de l'URL du datasource.
 //
-// Probleme : `new PrismaClient()` par defaut resout un chemin SQLite relatif
-// (`file:./prisma/dev.db` du .env) par rapport au CWD, alors qu'un override via
-// `datasources` le resout par rapport au dossier du schema -> deux bases
-// differentes (dont une base "fantome" backend/prisma/prisma/dev.db).
+// Le CLI Prisma (`db push`, `migrate`, `db seed`) resout un chemin SQLite RELATIF
+// par rapport au dossier du schema (backend/prisma/), alors que le client par
+// defaut le resout par rapport au CWD. Avec un .env partage par les deux, cela
+// donnait DEUX bases : l'une remplie par le CLI, l'autre lue (vide) par le
+// serveur (cas J-02 du cahier de recette, dossier fantome prisma/prisma/).
 //
-// Solution : on convertit tout chemin `file:` relatif en chemin ABSOLU (base =
-// CWD, comme le comportement d'origine du serveur) puis on le passe explicitement.
-// Ainsi la meme base est utilisee quel que soit le mode :
-//   - serveur dev  : file:./prisma/dev.db      -> file:/<cwd>/prisma/dev.db
-//   - tests        : file:/<abs>/test.db       -> inchange
-//   - Docker/prod  : file:/app/data/prod.db    -> inchange
+// On aligne le serveur sur le CLI : tout chemin `file:` relatif est resolu par
+// rapport au dossier du schema, puis passe explicitement au client.
+//   - dev  : file:./dev.db            -> file:<backend>/prisma/dev.db (comme le CLI)
+//   - tests: file:/<abs>/test.db      -> inchange
+//   - prod : file:/app/data/prod.db   -> inchange
 // L'URL explicite l'emporte aussi sur un .env recharge par Prisma (sans quoi les
 // tests ecrivaient dans dev.db au lieu de test.db).
-function resolveDatabaseUrl(raw: string | undefined): string | undefined {
+const SCHEMA_DIR = path.resolve(__dirname, '..', '..', 'prisma');
+
+export function resolveDatabaseUrl(raw: string | undefined, schemaDir: string = SCHEMA_DIR): string | undefined {
   if (!raw) return undefined;
   if (raw.startsWith('file:')) {
     const filePath = raw.slice('file:'.length);
     if (!path.isAbsolute(filePath)) {
-      return 'file:' + path.resolve(process.cwd(), filePath);
+      return 'file:' + path.resolve(schemaDir, filePath);
     }
   }
   return raw;

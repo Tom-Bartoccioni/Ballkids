@@ -43,6 +43,25 @@ const normalizeKey = (value: string) =>
     .toLowerCase()
     .trim();
 
+// Cle d'EN-TETE pour l'import : comme normalizeKey, puis suppression de tout ce
+// qui n'est pas lettre/chiffre. Ainsi « TAILLE T-SHIRT », « Taille Tshirt » et
+// « tailletshirt » designent la meme colonne. Appliquee a l'identique aux
+// en-tetes du fichier ET aux alias, pour garantir la symetrie.
+const normalizeHeader = (value: string) => normalizeKey(value).replace(/[^a-z0-9]+/g, '');
+
+// Nettoyage minimal d'un numero issu d'un tableur : retire les « ; » parasites,
+// et remet le 0 initial perdu quand Excel a stocke le numero comme un nombre
+// (ex: 651904945 -> 0651904945). Les espaces internes sont conserves.
+const normalizePhone = (raw: string) => {
+  const p = (raw || '').toString().replace(/;/g, '').trim();
+  return /^\d{9}$/.test(p) ? '0' + p : p;
+};
+
+// En-tetes de telephone designant un PARENT / responsable legal, a exclure de
+// la recherche partielle du telephone de l'enfant.
+// Convention retenue avec l'admin : TEL = enfant, TEL 1 / TEL 2 = responsables legaux.
+const PARENT_HEADER = /(pere|mere|parent|legal|responsable|tuteur|^tel(ephone)?[12]$)/;
+
 // Normalise un nom de personne (ou un nom de fichier photo) pour le matching :
 // retire les accents, met en minuscules, supprime les suffixes de copie de l'OS
 // (ex. \u00ab (1) \u00bb), convertit tout s\u00e9parateur/ponctuation (_ - . ' espaces\u2026) en un
@@ -488,18 +507,30 @@ router.post(
 
       const records = await parseSpreadsheet(req.file.buffer, req.file.originalname);
 
-      // Charger les ramasseurs existants pour detection de doublons (avec id pour permettre la mise a jour)
+      // Charger les ramasseurs existants. IDENTITE = nom + prenom (+ date de naissance
+      // pour departager les homonymes). L'email n'est PAS une identite : dans la liste
+      // reelle de l'admin, des freres et soeurs partagent l'adresse des parents.
       const existingBallkids = await prisma.ballkid.findMany({
         where: { tournamentId },
-        select: { id: true, email: true, firstName: true, lastName: true },
+        select: { id: true, firstName: true, lastName: true, birthDate: true },
       });
-      // Maps email->id et nom|prenom->id : permettent de retrouver l'enregistrement a mettre a jour lors d'un re-import
-      const emailToId = new Map<string, string>();
-      const nameToId = new Map<string, string>();
-      for (const b of existingBallkids) {
-        if (b.email) emailToId.set(b.email.toLowerCase(), b.id);
-        nameToId.set(`${b.firstName.toLowerCase()}|${b.lastName.toLowerCase()}`, b.id);
-      }
+      const nameToIds = new Map<string, { id: string; birthDate: Date }[]>();
+      const addToIndex = (b: { id: string; firstName: string; lastName: string; birthDate: Date }) => {
+        const key = `${normalizeName(b.firstName)}|${normalizeName(b.lastName)}`;
+        const list = nameToIds.get(key) ?? [];
+        list.push({ id: b.id, birthDate: b.birthDate });
+        nameToIds.set(key, list);
+      };
+      existingBallkids.forEach(addToIndex);
+
+      // Date « inconnue » posee par parseBirthDate quand le fichier n'en fournit pas :
+      // compatible avec n'importe quelle date lors du rapprochement.
+      const UNKNOWN_BIRTHDATE = new Date('2010-01-01').getTime();
+      const sameDay = (a: Date, b: Date) => a.toISOString().slice(0, 10) === b.toISOString().slice(0, 10);
+
+      // En-tetes (normalises) effectivement lus par un getField/getFieldPartial :
+      // ce qui reste a la fin est signale a l'utilisateur comme ignore.
+      const usedHeaders = new Set<string>();
 
       const created: any[] = [];
       const updated: any[] = [];
@@ -510,27 +541,38 @@ router.post(
         try {
           const normalizedRecord: Record<string, string> = {};
           for (const [key, value] of Object.entries(record)) {
-            normalizedRecord[normalizeKey(key)] = value as string;
+            const nk = normalizeHeader(key);
+            if (!nk) continue; // en-tete vide ou purement decoratif : colonne inaccessible
+            normalizedRecord[nk] = value as string;
           }
 
+          // Recherche exacte : renvoie la 1re valeur non vide parmi des alias d'en-tete.
           const getField = (keys: string[]) => {
+            // Un alias present (meme vide) est considere consomme : une case vide
+            // ne doit pas faire passer sa colonne pour inconnue.
+            for (const key of keys) { const nk = normalizeHeader(key); if (nk in normalizedRecord) usedHeaders.add(nk); }
             for (const key of keys) {
-              const normalizedKey = normalizeKey(key);
-              if (normalizedKey in normalizedRecord) {
-                return (normalizedRecord[normalizedKey] || '').toString();
+              const nk = normalizeHeader(key);
+              if (nk in normalizedRecord && normalizedRecord[nk] !== '') {
+                return (normalizedRecord[nk] || '').toString();
               }
             }
             return '';
           };
 
-          // Recherche « partielle » : renvoie la 1re valeur non vide dont l'en-tete contient un des radicaux.
-          // Utile pour le telephone dont les en-tetes varient (Mobile, GSM, Telephone portable, TELEPHONE 1/2/3...).
-          const getFieldPartial = (substrings: string[]) => {
+          // Presence d'un en-tete (meme avec valeur vide) : sert a distinguer
+          // « colonne absente » de « case vide » pour les booleens.
+          const hasField = (keys: string[]) => keys.some((key) => normalizeHeader(key) in normalizedRecord);
+
+          // Recherche « partielle » : 1re valeur non vide dont l'en-tete CONTIENT un des radicaux,
+          // en excluant les en-tetes qui matchent `exclude`. Utile pour le telephone dont les
+          // en-tetes varient (Mobile, GSM, Telephone portable, TELEPHONE 1/2/3...).
+          const getFieldPartial = (substrings: string[], exclude?: RegExp) => {
             for (const [k, v] of Object.entries(normalizedRecord)) {
-              if (!k) continue;
+              if (exclude && exclude.test(k)) continue;
               if (substrings.some((s) => k.includes(s))) {
                 const val = (v || '').toString().trim();
-                if (val) return val;
+                if (val) { usedHeaders.add(k); return val; }
               }
             }
             return '';
@@ -540,28 +582,71 @@ router.post(
           const lastName = getField(['nom', 'lastname', 'lastName', 'last name']).trim();
           const email = getField(['email', 'mail']).trim().replace(/;/g, '');
 
-          // Telephone : d'abord les en-tetes connus, sinon fallback sur un match partiel de l'en-tete.
-          let phone = getField(['telephone', 'téléphone', 'phone', 'telephone 1', 'telephone 2', 'telephone 3', 'tel', 'portable']).trim().replace(/;/g, '');
+          // Telephones. Responsables d'abord (alias exacts), puis l'enfant : alias exacts,
+          // sinon match partiel en EXCLUANT les en-tetes de parents pour ne jamais
+          // attribuer le numero d'un parent a l'enfant.
+          const phoneFather = normalizePhone(getField([
+            'Téléphone père', 'Tel père', 'Portable père', 'Père',
+            'Téléphone parent 1', 'Tel parent 1', 'Parent 1',
+            'Téléphone responsable légal 1', 'Tel responsable légal 1', 'Responsable légal 1',
+            'Téléphone légal 1', 'Tel légal 1', 'Légal 1', 'Responsable 1', 'Tel responsable 1',
+            'Tel 1', 'Téléphone 1',
+            'phoneFather',
+          ]));
+          const phoneMother = normalizePhone(getField([
+            'Téléphone mère', 'Tel mère', 'Portable mère', 'Mère',
+            'Téléphone parent 2', 'Tel parent 2', 'Parent 2',
+            'Téléphone responsable légal 2', 'Tel responsable légal 2', 'Responsable légal 2',
+            'Téléphone légal 2', 'Tel légal 2', 'Légal 2', 'Responsable 2', 'Tel responsable 2',
+            'Tel 2', 'Téléphone 2',
+            'phoneMother',
+          ]));
+          let phone = normalizePhone(getField([
+            'Téléphone', 'Téléphone enfant', 'Tel enfant', 'Portable enfant', 'Téléphone ramasseur',
+            'phone', 'Tel', 'Portable', 'Mobile',
+          ]));
           if (!phone) {
-            phone = getFieldPartial(['tel', 'phone', 'mobile', 'gsm', 'portable']).replace(/;/g, '').trim();
+            phone = normalizePhone(getFieldPartial(['tel', 'phone', 'mobile', 'gsm', 'portable'], PARENT_HEADER));
           }
-          // Restaurer le 0 initial perdu quand Excel stocke le numero comme un nombre (ex: 651904945 -> 0651904945).
-          if (/^\d{9}$/.test(phone)) {
-            phone = '0' + phone;
-          }
+
+          // Ancien (a deja participe). On ne touche au flag que si la colonne existe.
+          const ancienPresent = hasField(['Ancien', 'Ancienne', 'Vétéran', 'Veteran', 'Déjà participé']);
+          const ancienRaw = getField(['Ancien', 'Ancienne', 'Vétéran', 'Veteran', 'Déjà participé']).trim().toLowerCase();
+          const isVeteran = ['a', 'oui', 'o', 'x', '1', 'true', 'vrai', 'yes', 'ancien'].includes(ancienRaw);
 
           // Validation: nom et prenom obligatoires
           if (!firstName || !lastName) {
             errors.push({ record, error: 'Nom et prenom obligatoires' });
             continue;
           }
-          // Validation: email ou telephone, au moins un
-          if (!email && !phone) {
+
+          const nameKey = `${normalizeName(firstName)}|${normalizeName(lastName)}`;
+          const birthDateRaw = getField(['dateNaissance', 'datenaissance', 'birthDate', 'birth date', 'age', 'date de naissance', 'ne(e)', 'nee']).trim();
+          const birthDate = birthDateRaw ? parseBirthDate(birthDateRaw) : null;
+          const genderRaw = getField(['sexe', 'genre', 'gender']).trim();
+          const gender = genderRaw ? mapGender(genderRaw) : null;
+
+          // Rapprochement avec une fiche existante.
+          const candidates = nameToIds.get(nameKey) ?? [];
+          let existingId: string | undefined;
+          if (candidates.length > 0) {
+            if (birthDate) {
+              existingId = candidates.find((c) => sameDay(c.birthDate, birthDate) || c.birthDate.getTime() === UNKNOWN_BIRTHDATE)?.id;
+            } else if (candidates.length === 1) {
+              existingId = candidates[0].id;
+            } else {
+              errors.push({ record, error: `Homonyme ambigu (${candidates.length} fiches « ${lastName} ${firstName} ») : ajoutez la date de naissance` });
+              continue;
+            }
+          }
+
+          // Un contact (email ou telephone) n'est exige que pour CREER une fiche.
+          // Un fichier complement (ex: tailles de tenue) ne porte que nom + prenom :
+          // il doit pouvoir mettre a jour une fiche existante.
+          if (!existingId && !email && !phone) {
             errors.push({ record, error: 'Email ou telephone obligatoire' });
             continue;
           }
-
-          const nameKey = `${firstName.toLowerCase()}|${lastName.toLowerCase()}`;
 
           // Champs optionnels (contact + tailles de vetements). Reutilises en creation ET en mise a jour.
           const address = getField(['adresse', 'address']).trim();
@@ -571,20 +656,25 @@ router.post(
           const city = getField(['ville', 'city']).trim();
           const club = getField(['club']).trim();
           const licenseNumber = getField(['licence', 'license', 'licenseNumber', 'numeroLicence', 'n° licence', 'numero licence']).trim();
-          const tshirtSize = getField(['tailleTshirt', 'tailletshirt', 'tshirtSize', 't-shirt']).trim();
-          const shortSize = getField(['tailleShort', 'tailleshort', 'shortSize']).trim();
-          const tracksuitSize = getField(['tailleSurvetement', 'taillesurvetement', 'tracksuitSize']).trim();
-          const shoeSize = getField(['pointure', 'shoeSize']).trim();
+          const tshirtSize = getField(['Taille T-shirt', 'Taille Tshirt', 'tshirtSize', 'T-shirt', 'Tshirt']).trim();
+          const shortSize = getField(['Taille Short', 'shortSize', 'Short']).trim();
+          const tracksuitSize = getField(['Taille Survêtement', 'Taille Survet', 'tracksuitSize', 'Survêtement', 'Survet']).trim();
+          const shoeSize = getField(['Pointure', 'shoeSize', 'Taille chaussures', 'Chaussures']).trim();
 
           // Re-import : si le ramasseur existe deja (par email ou par nom+prenom), on MET A JOUR
           // les champs fournis (telephone, tailles de vetements...) au lieu de simplement ignorer la ligne.
           // `|| undefined` : ne jamais ecraser une valeur existante avec une chaine vide.
-          const existingId = (email && emailToId.get(email.toLowerCase())) || nameToId.get(nameKey);
           if (existingId) {
             const ballkid = await prisma.ballkid.update({
               where: { id: existingId },
               data: {
+                email: email || undefined,
+                birthDate: birthDate || undefined,
+                gender: gender || undefined,
                 phone: phone || undefined,
+                phoneFather: phoneFather || undefined,
+                phoneMother: phoneMother || undefined,
+                isVeteran: ancienPresent ? isVeteran : undefined,
                 address: address || undefined,
                 postalCode: postalCode || undefined,
                 city: city || undefined,
@@ -606,9 +696,12 @@ router.post(
               firstName,
               lastName,
               email: email || '',
-              birthDate: parseBirthDate(getField(['dateNaissance', 'datenaissance', 'birthDate', 'birth date', 'age', 'date de naissance', 'ne(e)', 'nee'])),
-              gender: mapGender(getField(['sexe', 'genre', 'gender'])),
+              birthDate: birthDate ?? parseBirthDate(''),
+              gender: gender ?? mapGender(''),
               phone: phone || null,
+              phoneFather: phoneFather || null,
+              phoneMother: phoneMother || null,
+              isVeteran,
               address: address || null,
               postalCode: postalCode || null,
               city: city || null,
@@ -623,13 +716,15 @@ router.post(
           });
           created.push(ballkid);
 
-          // Ajouter aux maps pour eviter les doublons dans le meme fichier
-          if (email) emailToId.set(email.toLowerCase(), ballkid.id);
-          nameToId.set(nameKey, ballkid.id);
+          // Indexer la nouvelle fiche : un doublon strict dans le meme fichier la mettra a jour
+          addToIndex(ballkid);
         } catch (err: any) {
           errors.push({ record, error: err.message });
         }
       }
+
+      const unmappedColumns = Object.keys(records[0] ?? {})
+        .filter((h) => normalizeHeader(h) && !usedHeaders.has(normalizeHeader(h)));
 
       res.json({
         success: true,
@@ -640,6 +735,7 @@ router.post(
           errors: errors.length,
           skippedDetails: skipped,
           errorDetails: errors,
+          unmappedColumns,
         },
       });
     } catch (error) {

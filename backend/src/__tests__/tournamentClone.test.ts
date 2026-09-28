@@ -94,7 +94,14 @@ describe('POST /api/tournaments - partir de zéro', () => {
       include: { criteria: true },
     });
     expect(session).not.toBeNull();
-    expect(session!.criteria.length).toBeGreaterThan(0);
+    // Grille de selection de l'admin : 11 criteres + bonus ancien/jour, avec coefficients
+    expect(session!.criteria.length).toBe(13);
+    const poubSansR = session!.criteria.find((c) => c.name === 'Poubelle sans rebond');
+    expect(poubSansR?.weight).toBe(3);
+    expect(session!.criteria.find((c) => c.abbreviation === 'ANCIEN')?.maxScore).toBe(40);
+    // La formation garde ses 4 criteres generiques (formule differente, normalisee sur 20)
+    const s1 = await prisma.trainingSession.findFirst({ where: { tournamentId: newId, sessionNumber: 1 }, include: { criteria: true } });
+    expect(s1?.criteria.length).toBe(4);
 
     // Des équipes doivent exister
     const teamsCount = await prisma.team.count({ where: { tournamentId: newId } });

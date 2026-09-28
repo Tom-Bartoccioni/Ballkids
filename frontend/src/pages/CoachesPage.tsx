@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/hooks/use-toast'
-import { UserCog, AlertTriangle, CheckCircle, Download, Plus, Trash2, X, Check, Calendar } from 'lucide-react'
+import { UserCog, AlertTriangle, CheckCircle, Download, Plus, Trash2, X, Check, Calendar, KeyRound } from 'lucide-react'
 
 export default function CoachesPage() {
   const { isAdmin } = useAuth()
@@ -62,6 +62,27 @@ export default function CoachesPage() {
 
   const coachAvailabilities = coachAvailabilitiesData?.coachAvailabilities || []
   const availabilityDays = coachAvailabilitiesData?.days || []
+
+  // Reinitialisation du mot de passe d'un coach par l'admin (demande admin :
+  // "comment faire pour recuperer les mots de passe")
+  const resetPasswordMutation = useMutation({
+    mutationFn: ({ userId, newPassword }: { userId: string; newPassword: string }) =>
+      api.put(`/auth/users/${userId}/password`, { newPassword }),
+    onSuccess: () => toast({ title: 'Mot de passe réinitialisé' }),
+    onError: (err: any) =>
+      toast({ variant: 'destructive', title: 'Erreur', description: err.response?.data?.message || 'Réinitialisation impossible' }),
+  })
+
+  const handleResetPassword = (coach: any) => {
+    const name = `${coach.user?.firstName} ${coach.user?.lastName}`
+    const newPassword = prompt(`Nouveau mot de passe pour ${name} (6 caractères minimum) :`)
+    if (!newPassword) return
+    if (newPassword.length < 6) {
+      toast({ variant: 'destructive', title: '6 caractères minimum' })
+      return
+    }
+    resetPasswordMutation.mutate({ userId: coach.user?.id ?? coach.userId, newPassword })
+  }
 
   const createCoachMutation = useMutation({
     mutationFn: () =>
@@ -182,14 +203,25 @@ export default function CoachesPage() {
                     <p className="text-xs text-muted-foreground">{coach.user?.email}</p>
                   </div>
                   {isAdmin && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                      onClick={() => handleDeleteCoach(coach.id, `${coach.user?.firstName} ${coach.user?.lastName}`)}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        title="Réinitialiser le mot de passe"
+                        onClick={() => handleResetPassword(coach)}
+                        disabled={resetPasswordMutation.isPending}
+                      >
+                        <KeyRound className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                        onClick={() => handleDeleteCoach(coach.id, `${coach.user?.firstName} ${coach.user?.lastName}`)}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
                   )}
                 </div>
               ))}

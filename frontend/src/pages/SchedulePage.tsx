@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToast } from '@/hooks/use-toast'
-import { Calendar, Users, MapPin, Download, Upload, Plus, Pencil, X, Save, UserPlus, User, AlertTriangle, Scale, Wand2, AlignJustify, Trash2, Search, UserX } from 'lucide-react'
+import { Calendar, Users, MapPin, Download, Upload, Plus, Pencil, X, Save, UserPlus, User, AlertTriangle, Scale, Wand2, AlignJustify, Trash2, Search, UserX, CopyCheck } from 'lucide-react'
 
 function getScoreColor(score: number, minScore: number, maxScore: number): { bg: string; text: string } {
   const range = maxScore - minScore
@@ -575,6 +575,20 @@ export default function SchedulePage() {
     },
     onError: () => {
       toast({ variant: 'destructive', title: 'Erreur lors de l\'enregistrement du terrain' })
+    },
+  })
+
+  // Appliquer les terrains du jour affiche a toute la semaine (demande admin).
+  // Ne supprime rien : met a jour par rang, cree ce qui manque.
+  const applyCourtsToAllMutation = useMutation({
+    mutationFn: async () => api.post(`/schedule/${tournament?.id}/day/${selectedDay}/courts/apply-to-all`),
+    onSuccess: (res) => {
+      const d = res.data.data
+      toast({ title: 'Terrains appliqués à tous les jours', description: `${d.created} créé(s), ${d.updated} mis à jour` })
+      queryClient.invalidateQueries({ queryKey: ['schedule'] })
+    },
+    onError: () => {
+      toast({ variant: 'destructive', title: "Erreur lors de l'application des terrains" })
     },
   })
 
@@ -1416,10 +1430,25 @@ export default function SchedulePage() {
                 Terrains
               </h3>
               {isAdmin && (
-                <Button size="sm" onClick={handleAddCourt}>
-                  <Plus className="w-4 h-4 mr-1" />
-                  Ajouter un terrain
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={applyCourtsToAllMutation.isPending || !(currentDay?.courts?.length > 0)}
+                    onClick={() => {
+                      if (confirm(`Appliquer les terrains du jour ${selectedDay} à tous les autres jours ? Rien n'est supprimé : les terrains existants sont mis à jour par rang, les manquants créés.`)) {
+                        applyCourtsToAllMutation.mutate()
+                      }
+                    }}
+                  >
+                    <CopyCheck className="w-4 h-4 mr-1" />
+                    Appliquer à tous les jours
+                  </Button>
+                  <Button size="sm" onClick={handleAddCourt}>
+                    <Plus className="w-4 h-4 mr-1" />
+                    Ajouter un terrain
+                  </Button>
+                </div>
               )}
             </div>
             

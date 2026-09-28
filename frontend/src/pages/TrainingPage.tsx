@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input'
 import { useToast } from '@/hooks/use-toast'
 import { 
   GraduationCap, CheckCircle, Clock, Save, Search,
-  ArrowUpDown, ArrowUp, ArrowDown, Upload, Users, UserX, Settings, X, Pencil, Star, User
+  ArrowUpDown, ArrowUp, ArrowDown, Upload, Download, Users, UserX, Settings, X, Pencil, Star, User
 } from 'lucide-react'
 
 type SortKey = 'lastName' | 'firstName' | 'session1' | 'session2' | 'session3' | 'session4' | 'average' | 'sessionsAttended'
@@ -296,6 +296,24 @@ export default function TrainingPage() {
     }
   }
 
+  // Export de la synthese (demande admin) : meme mecanique que l'export ramasseurs
+  const handleExportTraining = async (format: 'xlsx' | 'csv') => {
+    if (!tournament?.id) return
+    try {
+      const res = await api.get(`/export/training/${format}`, { params: { tournamentId: tournament.id }, responseType: 'blob' })
+      const url = window.URL.createObjectURL(new Blob([res.data]))
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `formation.${format}`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: "Erreur lors de l'export", description: err.response?.data?.message || err.message })
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -412,7 +430,19 @@ export default function TrainingPage() {
       {activeSession === 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Synthèse des 4 séances</CardTitle>
+            <CardTitle className="flex items-center justify-between">
+              <span>Synthèse des 4 séances</span>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => handleExportTraining('xlsx')} disabled={!tournament?.id}>
+                  <Download className="w-4 h-4 mr-2" />
+                  Excel
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => handleExportTraining('csv')} disabled={!tournament?.id}>
+                  <Download className="w-4 h-4 mr-2" />
+                  CSV
+                </Button>
+              </div>
+            </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             <div className="overflow-x-auto">

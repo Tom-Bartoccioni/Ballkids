@@ -389,6 +389,63 @@ router.post(
   }
 );
 
+// POST /api/schedule/:tournamentId/day/:dayNumber/courts/apply-to-all
+// Applique les terrains du jour source a TOUS les autres jours du tournoi.
+// Demande admin : "changement courts pas possible pour la semaine, a faire jour/jour".
+// Par ordre : un terrain existant au meme rang est mis a jour (nom, nb d'equipes),
+// sinon cree. On ne supprime JAMAIS : supprimer un terrain effacerait en cascade
+// ses affectations de coachs et d'equipes.
+router.post(
+  '/:tournamentId/day/:dayNumber/courts/apply-to-all',
+  authenticate,
+  requireAdmin,
+  async (req: AuthRequest, res, next) => {
+    try {
+      const tournamentId = req.params.tournamentId;
+      const dayNumber = parseInt(req.params.dayNumber);
+
+      const source = await prisma.tournamentDay.findUnique({
+        where: { tournamentId_dayNumber: { tournamentId, dayNumber } },
+        include: { courts: { orderBy: { order: 'asc' } } },
+      });
+      if (!source) {
+        throw new AppError('Jour non trouvé', 404);
+      }
+
+      const otherDays = await prisma.tournamentDay.findMany({
+        where: { tournamentId, id: { not: source.id } },
+        include: { courts: true },
+      });
+
+      let updated = 0;
+      let created = 0;
+      await prisma.$transaction(async (tx) => {
+        for (const day of otherDays) {
+          const byOrder = new Map(day.courts.map((c) => [c.order, c]));
+          for (const src of source.courts) {
+            const existing = byOrder.get(src.order);
+            if (existing) {
+              if (existing.name !== src.name || existing.teamCount !== src.teamCount) {
+                await tx.court.update({ where: { id: existing.id }, data: { name: src.name, teamCount: src.teamCount } });
+                updated++;
+              }
+            } else {
+              await tx.court.create({
+                data: { tournamentDayId: day.id, name: src.name, teamCount: src.teamCount, order: src.order },
+              });
+              created++;
+            }
+          }
+        }
+      });
+
+      res.json({ success: true, data: { updated, created } });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 // DELETE /api/schedule/court/:courtId - Supprimer un terrain
 router.delete('/court/:courtId', authenticate, requireAdmin, async (req, res, next) => {
   try {

@@ -16,6 +16,23 @@ type Tab = 'notation' | 'classement'
 type SortKey = 'lastName' | 'firstName' | 'average' | 'status' | 'rank' | 'current'
 type SortOrder = 'asc' | 'desc'
 
+// Grille de sélection de l'admin (même liste que DEFAULT_SELECTION_CRITERIA côté serveur).
+// Proposée quand aucun critère n'existe, et rechargeable depuis l'éditeur.
+const ADMIN_GRID: Array<{ name: string; maxScore: number; weight: number }> = [
+  { name: 'Poubelle avec rebond', maxScore: 20, weight: 1 },
+  { name: 'Poubelle sans rebond', maxScore: 20, weight: 3 },
+  { name: 'Roulé 1/2', maxScore: 20, weight: 1 },
+  { name: 'Roulé', maxScore: 20, weight: 2 },
+  { name: 'Vitesse (roulé)', maxScore: 20, weight: 3 },
+  { name: 'Rebond', maxScore: 20, weight: 2 },
+  { name: 'Vitesse', maxScore: 20, weight: 3 },
+  { name: 'Parcours poubelle', maxScore: 20, weight: 2 },
+  { name: 'Parcours boîtes 1', maxScore: 20, weight: 1 },
+  { name: 'Parcours boîtes 2', maxScore: 20, weight: 2 },
+  { name: 'Parcours vitesse', maxScore: 20, weight: 3 },
+  { name: 'Ancien (bonus)', maxScore: 40, weight: 1 },
+]
+
 export default function SelectionPage() {
   const { isAdmin } = useAuth()
   const { toast } = useToast()
@@ -203,12 +220,7 @@ export default function SelectionPage() {
         }))
       )
     } else {
-      setCriteriaDraft([
-        { name: 'Vitesse', maxScore: 5, weight: 1 },
-        { name: 'Précision', maxScore: 5, weight: 1 },
-        { name: 'Réflexes', maxScore: 5, weight: 1 },
-        { name: 'Concentration', maxScore: 5, weight: 1 },
-      ])
+      setCriteriaDraft(ADMIN_GRID.map((c) => ({ ...c })))
     }
     setShowCriteriaModal(true)
   }
@@ -228,14 +240,17 @@ export default function SelectionPage() {
     event.target.value = ''
   }
 
-  const selectionTotal = 80
+  // Objectif de l'admin : N selectionnes (78 par defaut) + quelques remplacants
+  const [selectCount, setSelectCount] = useState(78)
+  const [reserveCount, setReserveCount] = useState(4)
+  const selectionTotal = selectCount
 
   const selectMutation = useMutation({
-    mutationFn: () => api.post(`/selection/${tournament?.id}/select`, { count: selectionTotal, reserveCount: 0 }),
+    mutationFn: () => api.post(`/selection/${tournament?.id}/select`, { count: selectCount, reserveCount }),
     onSuccess: (res) => {
       toast({
         title: 'Sélection effectuée !',
-        description: `${res.data.data.selected} sélectionnés`,
+        description: `${res.data.data.selected} sélectionnés, ${res.data.data.reserves} remplaçants`,
       })
       queryClient.invalidateQueries({ queryKey: ['selection'] })
       queryClient.invalidateQueries({ queryKey: ['ballkids'] })
@@ -350,22 +365,34 @@ export default function SelectionPage() {
             Sélection initiale
           </h1>
           <p className="text-muted-foreground">
-            Notez les ramasseurs et sélectionnez les 80 meilleurs
+            Notez les ramasseurs et sélectionnez les meilleurs (78 + remplaçants par défaut)
           </p>
         </div>
-        {isAdmin && notedCount >= 80 && selectedCount === 0 && (
-          <Button
-            onClick={() => {
-              if (confirm(`Sélectionner les 80 meilleurs ramasseurs sur ${notedCount} notés ?`)) {
-                selectMutation.mutate()
-              }
-            }}
-            disabled={selectMutation.isPending}
-            size="lg"
-          >
-            <CheckCircle className="w-4 h-4 mr-2" />
-            Sélectionner les 80 meilleurs
-          </Button>
+        {isAdmin && notedCount > 0 && selectedCount === 0 && (
+          <div className="flex items-end gap-2">
+            <div className="space-y-1">
+              <label htmlFor="selectCount" className="text-xs text-muted-foreground">Sélectionnés</label>
+              <Input id="selectCount" type="number" min="1" className="w-24" value={selectCount}
+                onChange={(e) => setSelectCount(Math.max(1, parseInt(e.target.value) || 0))} />
+            </div>
+            <div className="space-y-1">
+              <label htmlFor="reserveCount" className="text-xs text-muted-foreground">Remplaçants</label>
+              <Input id="reserveCount" type="number" min="0" className="w-24" value={reserveCount}
+                onChange={(e) => setReserveCount(Math.max(0, parseInt(e.target.value) || 0))} />
+            </div>
+            <Button
+              onClick={() => {
+                if (confirm(`Sélectionner les ${selectCount} meilleurs + ${reserveCount} remplaçants sur ${notedCount} notés ?`)) {
+                  selectMutation.mutate()
+                }
+              }}
+              disabled={selectMutation.isPending || notedCount < selectCount}
+              size="lg"
+            >
+              <CheckCircle className="w-4 h-4 mr-2" />
+              Sélectionner {selectCount} + {reserveCount}
+            </Button>
+          </div>
         )}
       </div>
 
@@ -426,14 +453,14 @@ export default function SelectionPage() {
       </div>
 
       {/* Alerte si pas assez de notes */}
-      {notedCount < 80 && notedCount > 0 && selectedCount === 0 && (
+      {notedCount < selectCount && notedCount > 0 && selectedCount === 0 && (
         <Card className="border-red-200 bg-red-50">
           <CardContent className="py-4">
             <div className="flex items-center gap-3">
               <AlertTriangle className="w-5 h-5 text-red-700" />
               <p className="text-red-800">
-                <span className="font-medium">{notedCount}</span> ramasseurs notés sur les 80 minimum requis.
-                Il manque <span className="font-medium">{80 - notedCount}</span> notes pour pouvoir faire la sélection.
+                <span className="font-medium">{notedCount}</span> ramasseurs notés sur les {selectCount} à sélectionner.
+                Il manque <span className="font-medium">{selectCount - notedCount}</span> notes pour pouvoir faire la sélection.
               </p>
             </div>
           </CardContent>
@@ -815,8 +842,8 @@ export default function SelectionPage() {
             <CardContent className="space-y-4 overflow-y-auto">
               <div className="grid grid-cols-12 gap-2 text-xs text-muted-foreground px-1">
                 <span className="col-span-6">Nom du critère</span>
-                <span className="col-span-3 text-center">Max</span>
-                <span className="col-span-2 text-center">Poids</span>
+                <span className="col-span-3 text-center">Note max</span>
+                <span className="col-span-2 text-center">Coef.</span>
                 <span className="col-span-1 text-center">Suppr.</span>
               </div>
               {criteriaDraft.map((criteria, index) => (
@@ -835,7 +862,6 @@ export default function SelectionPage() {
                     className="col-span-3 text-center"
                     type="number"
                     min="1"
-                    max="20"
                     value={criteria.maxScore}
                     onChange={(e) => {
                       const next = [...criteriaDraft]
@@ -865,15 +891,45 @@ export default function SelectionPage() {
                   </Button>
                 </div>
               ))}
+              {/* Total maximum = Σ note max × coef, comme la colonne TOTAL du classeur ; part de chaque critère en % */}
+              {criteriaDraft.length > 0 && (() => {
+                const totalMax = criteriaDraft.reduce((sum, c) => sum + (c.maxScore || 0) * (c.weight || 0), 0)
+                return (
+                  <div className="rounded-md bg-gray-50 border p-3 text-xs space-y-1">
+                    <p className="font-medium">Total maximum : {totalMax}</p>
+                    <div className="grid grid-cols-2 gap-x-4 text-muted-foreground">
+                      {criteriaDraft.map((c, i) => (
+                        <span key={i}>
+                          {c.name || `Critère ${i + 1}`} : {c.maxScore || 0} × {c.weight || 0} = {(c.maxScore || 0) * (c.weight || 0)}
+                          {totalMax > 0 && ` (${Math.round(((c.maxScore || 0) * (c.weight || 0)) / totalMax * 100)} %)`}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })()}
             </CardContent>
             <div className="flex-shrink-0 border-t bg-white p-4 rounded-b-lg">
               <div className="flex justify-between">
-                <Button
-                  variant="outline"
-                  onClick={() => setCriteriaDraft([...criteriaDraft, { name: '', maxScore: 5, weight: 1 }])}
-                >
-                  Ajouter un critère
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setCriteriaDraft([...criteriaDraft, { name: '', maxScore: 20, weight: 1 }])}
+                  >
+                    Ajouter un critère
+                  </Button>
+                  <Button
+                    variant="outline"
+                    title="Remplace la liste par la grille du classeur : 11 critères avec coefficients + bonus ancien/jour"
+                    onClick={() => {
+                      if (criteriaDraft.length === 0 || confirm('Remplacer les critères actuels par la grille par défaut ?')) {
+                        setCriteriaDraft(ADMIN_GRID.map((c) => ({ ...c })))
+                      }
+                    }}
+                  >
+                    Charger la grille par défaut
+                  </Button>
+                </div>
                 <div className="flex gap-2">
                   <Button variant="outline" onClick={() => setShowCriteriaModal(false)}>
                     Annuler
