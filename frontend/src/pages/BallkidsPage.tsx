@@ -42,6 +42,7 @@ export default function BallkidsPage() {
   const [search, setSearch] = useState('')
   type ImportResult = {
     imported: number; updated: number; errors: number; blankRows?: number
+    merged?: number; mergedDetails?: { line?: number; name: string; detail: string }[]
     errorDetails: { line?: number; name: string; error: string }[]
     unmappedColumns?: string[]
   }
@@ -663,6 +664,25 @@ export default function BallkidsPage() {
                           {e.name ? <span className="font-medium">{e.name}</span> : <span className="italic text-gray-500">(sans nom)</span>}
                           <span className="text-gray-400"> : </span>
                           {e.error}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {(importResult.mergedDetails?.length ?? 0) > 0 && (
+                <div className="mb-3">
+                  <p className="text-sm font-medium text-gray-600 mb-1">Rapprochements par nom et prenom a verifier :</p>
+                  <ul className="text-sm text-amber-700 space-y-1">
+                    {importResult.mergedDetails!.map((m, i) => (
+                      <li key={i} className="flex items-start gap-2">
+                        <UserCheck className="w-3 h-3 flex-shrink-0 mt-1" />
+                        <span>
+                          {m.line ? <span className="text-gray-500">Ligne {m.line} </span> : null}
+                          <span className="font-medium">{m.name}</span>
+                          <span className="text-gray-400"> : </span>
+                          {m.detail}
                         </span>
                       </li>
                     ))}

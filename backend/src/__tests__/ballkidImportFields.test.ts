@@ -50,6 +50,7 @@ async function importFile(buf: Buffer, name = 'import.xlsx') {
   expect(res.status).toBe(200);
   return res.body.data as {
     imported: number; updated: number; skipped: number; errors: number; blankRows: number;
+    merged: number; mergedDetails: { line?: number; name: string; detail: string }[];
     errorDetails: { line?: number; name: string; record: any; error: string }[];
     unmappedColumns?: string[];
   };
@@ -296,7 +297,7 @@ describe('Import ramasseurs - rapport d\'erreurs precis (classeur 2027 LISTE WEB
     expect(data.imported).toBe(1);
     expect(data.errors).toBe(2);
     expect(data.errorDetails[0]).toMatchObject({ line: 3, name: 'Salvetti Timeo' });
-    expect(data.errorDetails[0].error).toBe('Date de naissance invalide : « 01/05/23011 »');
+    expect(data.errorDetails[0].error).toBe('Date de naissance illisible : « 01/05/23011 » (attendu jj/mm/aaaa)');
     expect(data.errorDetails[1]).toMatchObject({ line: 4, name: 'Sansprenom', error: 'Prenom manquant' });
   });
 
@@ -305,5 +306,63 @@ describe('Import ramasseurs - rapport d\'erreurs precis (classeur 2027 LISTE WEB
     const data = await importFile(Buffer.from(csv, 'utf8'), 'liste.csv');
     expect(data.errors).toBe(1);
     expect(data.errorDetails[0]).toMatchObject({ line: 3, error: 'Nom manquant' });
+  });
+});
+
+describe('Import ramasseurs - dates de naissance strictes', () => {
+  it('accepte jj/mm/aaaa, jj.mm.aaaa, jj-mm-aaaa et ISO ; refuse une date inexistante ou une annee implausible', async () => {
+    const buf = await makeXlsx(
+      ['NOM', 'PRENOM', 'DATE DE NAISSANCE', 'MAIL'],
+      [
+        ['Date', 'Slash', '15/03/2012', 'd1@date.test'],
+        ['Date', 'Point', '15.03.2012', 'd2@date.test'],
+        ['Date', 'Tiret', '15-03-2012', 'd3@date.test'],
+        ['Date', 'Iso', '2012-03-15', 'd4@date.test'],
+        ['Date', 'Fevrier', '31/02/2012', 'd5@date.test'],
+        ['Date', 'Ancienne', '15/03/1985', 'd6@date.test'],
+        ['Date', 'Texte', 'quinze mars', 'd7@date.test'],
+      ]
+    );
+    const data = await importFile(buf);
+    expect(data.imported).toBe(4);
+    expect(data.errors).toBe(3);
+    expect(data.errorDetails.map((e) => e.name)).toEqual(['Date Fevrier', 'Date Ancienne', 'Date Texte']);
+    for (const prenom of ['Slash', 'Point', 'Tiret', 'Iso']) {
+      const b = await prisma.ballkid.findFirst({ where: { tournamentId, lastName: 'Date', firstName: prenom } });
+      expect(b?.birthDate.toISOString().slice(0, 10)).toBe('2012-03-15');
+    }
+  });
+});
+
+describe('Import ramasseurs - fusions par homonymie signalees', () => {
+  it('signale la fiche sans date completee, la ligne sans date rapprochee, et l\'homonyme cree a cote', async () => {
+    await prisma.ballkid.createMany({
+      data: [
+        { tournamentId, lastName: 'Fusion', firstName: 'Sansdate', email: 'f1@fus.test', birthDate: new Date('2010-01-01'), gender: 'MALE', status: 'PENDING' },
+        { tournamentId, lastName: 'Fusion', firstName: 'Avecdate', email: 'f2@fus.test', birthDate: new Date('2012-06-01'), gender: 'MALE', status: 'PENDING' },
+        { tournamentId, lastName: 'Fusion', firstName: 'Autredate', email: 'f3@fus.test', birthDate: new Date('2011-01-10'), gender: 'MALE', status: 'PENDING' },
+      ],
+    });
+    const buf = await makeXlsx(
+      ['NOM', 'PRENOM', 'DATE DE NAISSANCE', 'MAIL'],
+      [
+        ['Fusion', 'Sansdate', '03/04/2013', 'f1@fus.test'],  // fiche existante sans date -> completee
+        ['Fusion', 'Avecdate', '', 'f2@fus.test'],            // ligne sans date -> rapprochee
+        ['Fusion', 'Autredate', '20/09/2013', 'f3@fus.test'], // autre date -> doublon signale
+        ['Fusion', 'Avecdate', '01/06/2012', 'f2@fus.test'],  // meme date -> mise a jour normale, non signalee
+      ]
+    );
+    const data = await importFile(buf);
+    expect(data.imported).toBe(1);
+    expect(data.updated).toBe(3);
+    expect(data.errors).toBe(0);
+    expect(data.merged).toBe(3);
+    expect(data.mergedDetails.map((m) => m.name)).toEqual(['Fusion Sansdate', 'Fusion Avecdate', 'Fusion Autredate']);
+    expect(data.mergedDetails[0].detail).toMatch(/sans date de naissance completee avec le 03\/04\/2013/);
+    expect(data.mergedDetails[1].detail).toMatch(/rapprochee de la fiche existante \(nee le 01\/06\/2012\)/);
+    expect(data.mergedDetails[2].detail).toMatch(/homonyme existe deja .*10\/01\/2011 au lieu de 20\/09\/2013/);
+    const sansdate = await prisma.ballkid.findFirst({ where: { tournamentId, firstName: 'Sansdate' } });
+    expect(sansdate?.birthDate.toISOString().slice(0, 10)).toBe('2013-04-03');
+    expect(await prisma.ballkid.count({ where: { tournamentId, lastName: 'Fusion', firstName: 'Autredate' } })).toBe(2);
   });
 });

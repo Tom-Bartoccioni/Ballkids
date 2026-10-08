@@ -525,7 +525,7 @@ router.post(
 
       // Date « inconnue » posee par parseBirthDate quand le fichier n'en fournit pas :
       // compatible avec n'importe quelle date lors du rapprochement.
-      const UNKNOWN_BIRTHDATE = new Date('2010-01-01').getTime();
+      const UNKNOWN_BIRTHDATE = new Date(UNKNOWN_BIRTHDATE_ISO).getTime();
       const sameDay = (a: Date, b: Date) => a.toISOString().slice(0, 10) === b.toISOString().slice(0, 10);
 
       // En-tetes (normalises) effectivement lus par un getField/getFieldPartial :
@@ -539,6 +539,10 @@ router.post(
       // Lignes sans aucune donnee de personne (ex. une numerotation « N° » preremplie
       // sous la liste) : ignorees sans etre comptees en erreur.
       let blankRows = 0;
+      // Rapprochements par nom + prenom qui meritent un controle de l'admin :
+      // fusion avec une fiche sans date, ligne sans date fusionnee, ou au contraire
+      // homonyme cree a cote d'une fiche portant une autre date de naissance.
+      const merged: { line?: number; name: string; detail: string }[] = [];
 
       for (const record of records) {
         const line = getLineNumber(record);
@@ -640,17 +644,31 @@ router.post(
 
           const nameKey = `${normalizeName(firstName)}|${normalizeName(lastName)}`;
           const birthDate = birthDateRaw ? parseBirthDate(birthDateRaw) : null;
+          if (birthDateRaw && !birthDate) {
+            pushError(`Date de naissance illisible : « ${birthDateRaw} » (attendu jj/mm/aaaa)`);
+            continue;
+          }
           const genderRaw = getField(['sexe', 'genre', 'gender']).trim();
           const gender = genderRaw ? mapGender(genderRaw) : null;
 
           // Rapprochement avec une fiche existante.
           const candidates = nameToIds.get(nameKey) ?? [];
           let existingId: string | undefined;
+          const fmt = (d: Date) => d.toISOString().slice(0, 10).split('-').reverse().join('/');
+          const pushMerge = (detail: string) => merged.push({ line, name: `${lastName} ${firstName}`, detail });
           if (candidates.length > 0) {
             if (birthDate) {
-              existingId = candidates.find((c) => sameDay(c.birthDate, birthDate) || c.birthDate.getTime() === UNKNOWN_BIRTHDATE)?.id;
+              const exact = candidates.find((c) => sameDay(c.birthDate, birthDate));
+              const unknown = candidates.find((c) => c.birthDate.getTime() === UNKNOWN_BIRTHDATE);
+              existingId = (exact ?? unknown)?.id;
+              if (!exact && unknown) {
+                pushMerge(`fiche existante sans date de naissance completee avec le ${fmt(birthDate)}`);
+              } else if (!exact) {
+                pushMerge(`nouvelle fiche creee : un homonyme existe deja avec une autre date de naissance (${candidates.map((c) => fmt(c.birthDate)).join(', ')} au lieu de ${fmt(birthDate)})`);
+              }
             } else if (candidates.length === 1) {
               existingId = candidates[0].id;
+              pushMerge(`ligne sans date de naissance rapprochee de la fiche existante${candidates[0].birthDate.getTime() === UNKNOWN_BIRTHDATE ? '' : ` (nee le ${fmt(candidates[0].birthDate)})`}`);
             } else {
               pushError(`Homonyme ambigu (${candidates.length} fiches « ${lastName} ${firstName} ») : ajoutez la date de naissance`);
               continue;
@@ -713,7 +731,7 @@ router.post(
               firstName,
               lastName,
               email: email || '',
-              birthDate: birthDate ?? parseBirthDate(''),
+              birthDate: birthDate ?? new Date(UNKNOWN_BIRTHDATE_ISO),
               gender: gender ?? mapGender(''),
               phone: phone || null,
               phoneFather: phoneFather || null,
@@ -736,13 +754,7 @@ router.post(
           // Indexer la nouvelle fiche : un doublon strict dans le meme fichier la mettra a jour
           addToIndex(ballkid);
         } catch (err: any) {
-          // Prisma refuse une date hors plage (ex. annee a 5 chiffres « 01/05/23011 ») :
-          // l'admin doit voir la valeur fautive, pas l'erreur technique.
-          if (/DateTime/.test(err.message ?? '') && birthDateRaw) {
-            pushError(`Date de naissance invalide : « ${birthDateRaw} »`);
-          } else {
-            pushError(err.message);
-          }
+          pushError(err.message);
         }
       }
 
@@ -757,6 +769,8 @@ router.post(
           skipped: skipped.length,
           errors: errors.length,
           blankRows,
+          merged: merged.length,
+          mergedDetails: merged,
           skippedDetails: skipped,
           errorDetails: errors,
           unmappedColumns,
@@ -768,16 +782,27 @@ router.post(
   }
 );
 
-function parseBirthDate(value: string): Date {
-  if (!value) return new Date('2010-01-01');
-  // Already ISO format (from spreadsheet parser): 2012-03-15
-  if (/^\d{4}-\d{2}-\d{2}/.test(value)) return new Date(value);
-  // French format: 15/03/2012 or 15-03-2012
-  const frMatch = value.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
-  if (frMatch) return new Date(`${frMatch[3]}-${frMatch[2].padStart(2, '0')}-${frMatch[1].padStart(2, '0')}`);
-  // Try as-is
-  const d = new Date(value);
-  return isNaN(d.getTime()) ? new Date('2010-01-01') : d;
+// Date « inconnue » posee quand le fichier ne fournit pas de date de naissance.
+const UNKNOWN_BIRTHDATE_ISO = '2010-01-01';
+
+// Lecture STRICTE d'une date de naissance : ISO (2012-03-15, sortie du parseur
+// tableur) ou francaise (15/03/2012, 15-03-2012, 15.03.2012). Tout autre texte,
+// une date inexistante (31/02/2012) ou une annee hors d'une plage plausible
+// (ex. « 01/05/23011 », faute de frappe) renvoie null : la ligne est signalee a
+// l'admin au lieu de recevoir en silence une date fausse ou « inconnue ».
+function parseBirthDate(value: string): Date | null {
+  if (!value) return new Date(UNKNOWN_BIRTHDATE_ISO);
+  let y: number, m: number, d: number;
+  const iso = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  const fr = value.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);
+  if (iso) [y, m, d] = [Number(iso[1]), Number(iso[2]), Number(iso[3])];
+  else if (fr) [y, m, d] = [Number(fr[3]), Number(fr[2]), Number(fr[1])];
+  else return null;
+  const date = new Date(Date.UTC(y, m - 1, d));
+  if (date.getUTCFullYear() !== y || date.getUTCMonth() !== m - 1 || date.getUTCDate() !== d) return null;
+  const thisYear = new Date().getUTCFullYear();
+  if (y < 1990 || y > thisYear) return null;
+  return date;
 }
 
 function mapGender(value: string): string {
