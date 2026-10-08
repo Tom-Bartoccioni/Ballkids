@@ -268,10 +268,10 @@ export default function SelectionScorePage() {
             {/* Total Score Display */}
             <div className="pt-6 mt-6 border-t">
               <div className="flex items-center justify-between">
-                <span className="text-lg font-semibold">Note totale</span>
+                <span className="text-lg font-semibold">Total des points</span>
                 <span className="text-3xl font-bold text-primary">
-                  {totalScore.toFixed(1)}
-                  <span className="text-lg text-muted-foreground">/20</span>
+                  {Number.isInteger(totalScore) ? totalScore : totalScore.toFixed(1)}
+                  <span className="text-lg text-muted-foreground"> pts</span>
                 </span>
               </div>
             </div>

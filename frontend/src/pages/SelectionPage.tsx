@@ -562,7 +562,7 @@ export default function SelectionPage() {
                 <thead>
                   <tr className="border-b bg-gray-50">
                     <SortHeader column="lastName" label="Ramasseur" />
-                    <SortHeader column="current" label="Note" align="center" />
+                    <SortHeader column="current" label="Total points" align="center" />
                     <SortHeader column="status" label="Statut" />
                     {hasCriteria && <th className="p-4 font-medium text-center">Actions</th>}
                   </tr>
@@ -625,13 +625,13 @@ export default function SelectionPage() {
                                   onClick={() => {
                                     setScores((prev) => ({
                                       ...prev,
-                                      [ballkid.id]: existingScore.averageScore.toFixed(1),
+                                      [ballkid.id]: String(existingScore.averageScore),
                                     }))
                                     setEditingSelectionId(ballkid.id)
                                   }}
                                   title="Cliquer pour modifier"
                                 >
-                                  {existingScore.averageScore.toFixed(1)}
+                                  {Number.isInteger(existingScore.averageScore) ? existingScore.averageScore : existingScore.averageScore.toFixed(1)} pts
                                   <Pencil className="w-4 h-4 text-muted-foreground" />
                                 </button>
                               ) : (
@@ -726,7 +726,7 @@ export default function SelectionPage() {
                   <tr className="border-b bg-gray-50">
                     <SortHeader column="rank" label="Rang" />
                     <SortHeader column="lastName" label="Nom" />
-                    <SortHeader column="average" label="Moyenne" />
+                    <SortHeader column="average" label="Total points" />
                     <th className="text-center p-4 font-medium">Notes</th>
                     <SortHeader column="status" label="Statut" />
                   </tr>
@@ -787,10 +787,11 @@ export default function SelectionPage() {
                                 </Link>
                               </td>
                               <td className="p-4">
+                                {/* Total brut des points (somme des notes x coef), jamais ramene sur 20 */}
                                 <span className="font-mono text-lg font-semibold">
-                                  {item.averageScore.toFixed(1)}
+                                  {Number.isInteger(item.averageScore) ? item.averageScore : item.averageScore.toFixed(1)}
                                 </span>
-                                <span className="text-muted-foreground text-sm">/20</span>
+                                <span className="text-muted-foreground text-sm"> pts</span>
                               </td>
                               <td className="p-4 text-center text-sm text-muted-foreground">
                                 {item.scoresCount} note{item.scoresCount > 1 ? 's' : ''}
@@ -891,17 +892,16 @@ export default function SelectionPage() {
                   </Button>
                 </div>
               ))}
-              {/* Total maximum = Σ note max × coef, comme la colonne TOTAL du classeur ; part de chaque critère en % */}
+              {/* Total maximum = Σ note max × coef, comme la colonne TOTAL du classeur. Pas de pourcentage : l'admin veut des points bruts. */}
               {criteriaDraft.length > 0 && (() => {
                 const totalMax = criteriaDraft.reduce((sum, c) => sum + (c.maxScore || 0) * (c.weight || 0), 0)
                 return (
                   <div className="rounded-md bg-gray-50 border p-3 text-xs space-y-1">
-                    <p className="font-medium">Total maximum : {totalMax}</p>
+                    <p className="font-medium">Total maximum : {totalMax} pts</p>
                     <div className="grid grid-cols-2 gap-x-4 text-muted-foreground">
                       {criteriaDraft.map((c, i) => (
                         <span key={i}>
-                          {c.name || `Critère ${i + 1}`} : {c.maxScore || 0} × {c.weight || 0} = {(c.maxScore || 0) * (c.weight || 0)}
-                          {totalMax > 0 && ` (${Math.round(((c.maxScore || 0) * (c.weight || 0)) / totalMax * 100)} %)`}
+                          {c.name || `Critère ${i + 1}`} : {c.maxScore || 0} × {c.weight || 0} = {(c.maxScore || 0) * (c.weight || 0)} pts
                         </span>
                       ))}
                     </div>
