@@ -49,8 +49,8 @@ async function importFile(buf: Buffer, name = 'import.xlsx') {
     .field('tournamentId', tournamentId);
   expect(res.status).toBe(200);
   return res.body.data as {
-    imported: number; updated: number; skipped: number; errors: number;
-    errorDetails: { record: any; error: string }[];
+    imported: number; updated: number; skipped: number; errors: number; blankRows: number;
+    errorDetails: { line?: number; name: string; record: any; error: string }[];
     unmappedColumns?: string[];
   };
 }
@@ -264,5 +264,46 @@ describe('Import ramasseurs - re-import : les colonnes lues a la creation ne son
     expect(data.updated).toBe(1);
     expect(data.unmappedColumns).not.toContain('SEXE');
     expect((await prisma.ballkid.findFirst({ where: { email: 'genre@test.test' } }))?.gender).toBe('FEMALE');
+  });
+});
+
+describe('Import ramasseurs - rapport d\'erreurs precis (classeur 2027 LISTE WEB)', () => {
+  it('ignore les lignes qui ne portent qu\'un N° sans les compter en erreur', async () => {
+    const buf = await makeXlsx(
+      ['N°', 'NOM', 'PRENOM', 'MAIL'],
+      [
+        [1, 'Numero', 'Un', 'un@num.test'],
+        [2, '', '', ''],
+        [3, '', '', ''],
+      ]
+    );
+    const data = await importFile(buf);
+    expect(data.imported).toBe(1);
+    expect(data.errors).toBe(0);
+    expect(data.blankRows).toBe(2);
+  });
+
+  it('localise chaque erreur par numero de ligne Excel et nom, avec un motif lisible', async () => {
+    const buf = await makeXlsx(
+      ['NOM', 'PRENOM', 'AGE', 'MAIL'],
+      [
+        ['Ok', 'Ligne', '2012-03-15', 'ok@err.test'],          // ligne 2
+        ['Salvetti', 'Timeo', '01/05/23011', 'fam@err.test'],  // ligne 3 : annee a 5 chiffres
+        ['Sansprenom', '', '', 'x@err.test'],                   // ligne 4
+      ]
+    );
+    const data = await importFile(buf);
+    expect(data.imported).toBe(1);
+    expect(data.errors).toBe(2);
+    expect(data.errorDetails[0]).toMatchObject({ line: 3, name: 'Salvetti Timeo' });
+    expect(data.errorDetails[0].error).toBe('Date de naissance invalide : « 01/05/23011 »');
+    expect(data.errorDetails[1]).toMatchObject({ line: 4, name: 'Sansprenom', error: 'Prenom manquant' });
+  });
+
+  it('numerote aussi les lignes d\'un CSV', async () => {
+    const csv = ['NOM;PRENOM;MAIL', 'Csv;Ok;csv@err.test', ';Orphelin;o@err.test'].join('\n');
+    const data = await importFile(Buffer.from(csv, 'utf8'), 'liste.csv');
+    expect(data.errors).toBe(1);
+    expect(data.errorDetails[0]).toMatchObject({ line: 3, error: 'Nom manquant' });
   });
 });

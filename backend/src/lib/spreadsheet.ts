@@ -69,6 +69,9 @@ async function parseExcel(buffer: Buffer, targetSheet?: string): Promise<Record<
     })
     .map((row) => {
       const record: Record<string, string> = {};
+      // Numero de ligne tel qu'affiche dans Excel (SheetJS numerote a partir de 0,
+      // en-tete compris) : sert a localiser une ligne en erreur dans le rapport.
+      setLineNumber(record, ((row as any).__rowNum__ ?? 0) + 1);
       for (const [key, value] of Object.entries(row)) {
         // Skip __EMPTY columns (unnamed columns from SheetJS)
         if (key.startsWith('__EMPTY')) continue;
@@ -107,14 +110,27 @@ async function parseCsv(buffer: Buffer): Promise<Record<string, string>[]> {
       trim: true,
       delimiter,
       bom: true,
+      info: true,
     })
   );
 
-  for await (const record of parser) {
+  for await (const { record, info } of parser) {
+    setLineNumber(record, info.lines);
     records.push(record);
   }
 
   return records;
+}
+
+// Propriete NON enumerable : elle n'apparait ni dans Object.keys/entries ni dans
+// le JSON, les consommateurs qui parcourent les colonnes ne la voient pas.
+function setLineNumber(record: Record<string, string>, line: number) {
+  Object.defineProperty(record, '__line', { value: line, enumerable: false });
+}
+
+/** Numero de ligne d'origine (1 = en-tete) d'un enregistrement issu de parseSpreadsheet. */
+export function getLineNumber(record: Record<string, string>): number | undefined {
+  return (record as any).__line;
 }
 
 /**

@@ -7,7 +7,7 @@ import convertHeic from 'heic-convert';
 import prisma from '../lib/prisma.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { authenticate, requireAdmin, AuthRequest } from '../middleware/auth.js';
-import { parseSpreadsheet } from '../lib/spreadsheet.js';
+import { parseSpreadsheet, getLineNumber } from '../lib/spreadsheet.js';
 
 // Constantes pour remplacer les enums (SQLite ne supporte pas les enums)
 const BallkidStatus = {
@@ -534,10 +534,19 @@ router.post(
 
       const created: any[] = [];
       const updated: any[] = [];
-      const errors: any[] = [];
+      const errors: { line?: number; name: string; error: string; record: any }[] = [];
       const skipped: any[] = [];
+      // Lignes sans aucune donnee de personne (ex. une numerotation « N° » preremplie
+      // sous la liste) : ignorees sans etre comptees en erreur.
+      let blankRows = 0;
 
       for (const record of records) {
+        const line = getLineNumber(record);
+        let lastName = '';
+        let firstName = '';
+        let birthDateRaw = '';
+        const pushError = (error: string) =>
+          errors.push({ line, name: `${lastName} ${firstName}`.trim(), error, record });
         try {
           const normalizedRecord: Record<string, string> = {};
           for (const [key, value] of Object.entries(record)) {
@@ -578,8 +587,8 @@ router.post(
             return '';
           };
 
-          const firstName = getField(['prenom', 'prénom', 'firstname', 'firstName', 'first name']).trim();
-          const lastName = getField(['nom', 'lastname', 'lastName', 'last name']).trim();
+          firstName = getField(['prenom', 'prénom', 'firstname', 'firstName', 'first name']).trim();
+          lastName = getField(['nom', 'lastname', 'lastName', 'last name']).trim();
           const email = getField(['email', 'mail']).trim().replace(/;/g, '');
 
           // Telephones. Responsables d'abord (alias exacts), puis l'enfant : alias exacts,
@@ -614,14 +623,22 @@ router.post(
           const ancienRaw = getField(['Ancien', 'Ancienne', 'Vétéran', 'Veteran', 'Déjà participé']).trim().toLowerCase();
           const isVeteran = ['a', 'oui', 'o', 'x', '1', 'true', 'vrai', 'yes', 'ancien'].includes(ancienRaw);
 
+          birthDateRaw = getField(['dateNaissance', 'datenaissance', 'birthDate', 'birth date', 'age', 'date de naissance', 'ne(e)', 'nee']).trim();
+
+          // Ligne sans nom NI prenom NI aucune donnee de personne : ce n'est pas une
+          // erreur de saisie mais une ligne vide (numerotation, mise en forme).
+          if (!firstName && !lastName && !email && !phone && !phoneFather && !phoneMother && !birthDateRaw) {
+            blankRows++;
+            continue;
+          }
+
           // Validation: nom et prenom obligatoires
           if (!firstName || !lastName) {
-            errors.push({ record, error: 'Nom et prenom obligatoires' });
+            pushError(!firstName && !lastName ? 'Nom et prenom manquants' : !lastName ? 'Nom manquant' : 'Prenom manquant');
             continue;
           }
 
           const nameKey = `${normalizeName(firstName)}|${normalizeName(lastName)}`;
-          const birthDateRaw = getField(['dateNaissance', 'datenaissance', 'birthDate', 'birth date', 'age', 'date de naissance', 'ne(e)', 'nee']).trim();
           const birthDate = birthDateRaw ? parseBirthDate(birthDateRaw) : null;
           const genderRaw = getField(['sexe', 'genre', 'gender']).trim();
           const gender = genderRaw ? mapGender(genderRaw) : null;
@@ -635,7 +652,7 @@ router.post(
             } else if (candidates.length === 1) {
               existingId = candidates[0].id;
             } else {
-              errors.push({ record, error: `Homonyme ambigu (${candidates.length} fiches « ${lastName} ${firstName} ») : ajoutez la date de naissance` });
+              pushError(`Homonyme ambigu (${candidates.length} fiches « ${lastName} ${firstName} ») : ajoutez la date de naissance`);
               continue;
             }
           }
@@ -644,7 +661,7 @@ router.post(
           // Un fichier complement (ex: tailles de tenue) ne porte que nom + prenom :
           // il doit pouvoir mettre a jour une fiche existante.
           if (!existingId && !email && !phone) {
-            errors.push({ record, error: 'Email ou telephone obligatoire' });
+            pushError('Email ou telephone obligatoire');
             continue;
           }
 
@@ -719,7 +736,13 @@ router.post(
           // Indexer la nouvelle fiche : un doublon strict dans le meme fichier la mettra a jour
           addToIndex(ballkid);
         } catch (err: any) {
-          errors.push({ record, error: err.message });
+          // Prisma refuse une date hors plage (ex. annee a 5 chiffres « 01/05/23011 ») :
+          // l'admin doit voir la valeur fautive, pas l'erreur technique.
+          if (/DateTime/.test(err.message ?? '') && birthDateRaw) {
+            pushError(`Date de naissance invalide : « ${birthDateRaw} »`);
+          } else {
+            pushError(err.message);
+          }
         }
       }
 
@@ -733,6 +756,7 @@ router.post(
           updated: updated.length,
           skipped: skipped.length,
           errors: errors.length,
+          blankRows,
           skippedDetails: skipped,
           errorDetails: errors,
           unmappedColumns,

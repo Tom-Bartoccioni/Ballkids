@@ -40,6 +40,12 @@ export default function BallkidsPage() {
   const importInputRef = useRef<HTMLInputElement | null>(null)
   const photoImportRef = useRef<HTMLInputElement | null>(null)
   const [search, setSearch] = useState('')
+  type ImportResult = {
+    imported: number; updated: number; errors: number; blankRows?: number
+    errorDetails: { line?: number; name: string; error: string }[]
+    unmappedColumns?: string[]
+  }
+  const [importResult, setImportResult] = useState<ImportResult | null>(null)
   const [photoResult, setPhotoResult] = useState<{ matched: number; notFound: number; duplicates: number; ambiguous?: number; details: { matched: { filename: string; ballkidName: string }[]; notFound: string[]; duplicates: string[]; ambiguous?: { filename: string; candidates: string[] }[] } } | null>(null)
   const [page, setPage] = useState(1)
   const [statusFilter, setStatusFilter] = useState('')
@@ -248,28 +254,9 @@ export default function BallkidsPage() {
       return res.data.data
     },
     onSuccess: (data) => {
-      const parts = [`${data.imported} importe(s)`]
-      if (data.updated > 0) parts.push(`${data.updated} mis a jour`)
-      if (data.skipped > 0) parts.push(`${data.skipped} doublon(s) ignore(s)`)
-      if (data.errors > 0) parts.push(`${data.errors} erreur(s)`)
-      toast({
-        title: 'Import termine',
-        description: parts.join(', '),
-        variant: data.skipped > 0 || data.errors > 0 ? 'destructive' : 'default',
-      })
-      if (data.skipped > 0 && data.skippedDetails?.length > 0) {
-        const names = data.skippedDetails.slice(0, 5).map((s: any) => s.reason).join('\n')
-        toast({
-          title: `${data.skipped} doublon(s) detecte(s)`,
-          description: names,
-        })
-      }
-      if (data.unmappedColumns?.length > 0) {
-        toast({
-          title: `${data.unmappedColumns.length} colonne(s) non reconnue(s), ignoree(s)`,
-          description: data.unmappedColumns.join(', '),
-        })
-      }
+      // Le detail (ligne, nom, motif de chaque erreur) s'affiche dans une modale :
+      // un simple compteur « N erreur(s) » ne permet pas de retrouver qui manque.
+      setImportResult(data)
       queryClient.invalidateQueries({ queryKey: ['ballkids'] })
       queryClient.invalidateQueries({ queryKey: ['ballkids', 'pending'] })
     },
@@ -633,6 +620,74 @@ export default function BallkidsPage() {
           )}
         </CardContent>
       </Card>
+      {/* Modal resultat import fichier */}
+      {importResult && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full max-h-[80vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold">Resultat de l'import</h3>
+                <button onClick={() => setImportResult(null)} className="text-gray-400 hover:text-gray-600" aria-label="Fermer">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-3 mb-4">
+                <div className="flex items-center gap-2 text-green-700 bg-green-50 p-3 rounded-lg">
+                  <CheckCircle className="w-5 h-5" />
+                  <span className="font-medium">{importResult.imported} nouvelle{importResult.imported > 1 ? 's' : ''} fiche{importResult.imported > 1 ? 's' : ''} creee{importResult.imported > 1 ? 's' : ''}</span>
+                </div>
+                {importResult.updated > 0 && (
+                  <div className="flex items-center gap-2 text-blue-700 bg-blue-50 p-3 rounded-lg">
+                    <UserCheck className="w-5 h-5" />
+                    <span className="font-medium">{importResult.updated} fiche{importResult.updated > 1 ? 's' : ''} deja presente{importResult.updated > 1 ? 's' : ''}, completee{importResult.updated > 1 ? 's' : ''} avec le fichier</span>
+                  </div>
+                )}
+                {importResult.errors > 0 && (
+                  <div className="flex items-center gap-2 text-red-700 bg-red-50 p-3 rounded-lg">
+                    <XCircle className="w-5 h-5" />
+                    <span className="font-medium">{importResult.errors} ligne{importResult.errors > 1 ? 's' : ''} non importee{importResult.errors > 1 ? 's' : ''}</span>
+                  </div>
+                )}
+              </div>
+
+              {importResult.errorDetails?.length > 0 && (
+                <div className="mb-3">
+                  <p className="text-sm font-medium text-gray-600 mb-1">Lignes non importees (a corriger dans le fichier puis reimporter) :</p>
+                  <ul className="text-sm text-red-700 space-y-1">
+                    {importResult.errorDetails.map((e, i) => (
+                      <li key={i} className="flex items-start gap-2">
+                        <XCircle className="w-3 h-3 flex-shrink-0 mt-1" />
+                        <span>
+                          {e.line ? <span className="text-gray-500">Ligne {e.line} </span> : null}
+                          {e.name ? <span className="font-medium">{e.name}</span> : <span className="italic text-gray-500">(sans nom)</span>}
+                          <span className="text-gray-400"> : </span>
+                          {e.error}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {(importResult.unmappedColumns?.length ?? 0) > 0 && (
+                <p className="text-xs text-gray-500 mb-3">
+                  Colonnes ignorees (non reconnues) : {importResult.unmappedColumns!.join(', ')}
+                </p>
+              )}
+              {(importResult.blankRows ?? 0) > 0 && (
+                <p className="text-xs text-gray-500 mb-3">
+                  {importResult.blankRows} ligne{importResult.blankRows! > 1 ? 's' : ''} vide{importResult.blankRows! > 1 ? 's' : ''} (numero seul) ignoree{importResult.blankRows! > 1 ? 's' : ''}.
+                </p>
+              )}
+
+              <div className="flex justify-end">
+                <Button onClick={() => setImportResult(null)}>Fermer</Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Modal résultat import photos */}
       {photoResult && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
