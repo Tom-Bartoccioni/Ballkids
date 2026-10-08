@@ -275,7 +275,7 @@ export default function TrainingPage() {
   }, [summary, search, sortKey, sortOrder])
 
   const handleScoreChange = (ballkidId: string, sessionNumber: number, value: string) => {
-    if (value === '' || (/^\d*\.?\d*$/.test(value) && parseFloat(value) <= 20)) {
+    if (value === '' || /^\d*\.?\d*$/.test(value)) {
       setScores(prev => ({ ...prev, [`${ballkidId}-${sessionNumber}`]: value }))
     }
   }
@@ -284,7 +284,7 @@ export default function TrainingPage() {
     const scoreValue = scores[`${ballkidId}-${sessionNumber}`]
     if (scoreValue && !isNaN(parseFloat(scoreValue))) {
       const score = parseFloat(scoreValue)
-      if (score >= 0 && score <= 20) {
+      if (score >= 0) {
         scoreMutation.mutate({ ballkidId, score, sessionNumber })
       }
     }
@@ -645,8 +645,8 @@ export default function TrainingPage() {
                               {!isAdmin ? (
                                 currentScore !== null ? (
                                   <span className="font-mono text-lg font-semibold">
-                                    {currentScore.toFixed(1)}
-                                    <span className="text-muted-foreground text-sm">/20</span>
+                                    {Number.isInteger(currentScore) ? currentScore : currentScore.toFixed(1)}
+                                    <span className="text-muted-foreground text-sm"> pts</span>
                                   </span>
                                 ) : (
                                   <span className="text-muted-foreground">-</span>
@@ -798,7 +798,6 @@ export default function TrainingPage() {
                     className="col-span-3 text-center"
                     type="number"
                     min="1"
-                    max="20"
                     value={criteria.maxScore}
                     onChange={(e) => {
                       const next = [...criteriaDraft]

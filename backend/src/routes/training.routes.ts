@@ -265,22 +265,17 @@ router.post(
         throw new AppError('Session de formation non trouvée', 404);
       }
 
-      // Calculer le total (moyenne pondérée normalisée sur 20)
+      // Total = somme brute des points (note x coef), comme en selection : l'admin ne
+      // veut aucune note ramenee sur 20 (plus de moyenne ponderee normalisee).
       let totalScore = 0;
-      let totalWeight = 0;
       const criteriaMap = new Map(session.criteria.map((c) => [c.id, c]));
 
       for (const [criteriaId, value] of Object.entries(scores || {})) {
         const criteria = criteriaMap.get(criteriaId);
         if (criteria && !criteria.isCalculated) {
-          const normalizedScore = ((value as number) / criteria.maxScore) * 20;
-          totalScore += normalizedScore * criteria.weight;
-          totalWeight += criteria.weight;
+          totalScore += (value as number) * criteria.weight;
         }
       }
-      
-      // Calculer la moyenne pondérée
-      totalScore = totalWeight > 0 ? totalScore / totalWeight : 0;
 
       const trainingScore = await prisma.trainingScore.upsert({
         where: {
@@ -409,8 +404,8 @@ router.post(
       const scorerId = req.user!.id;
       const sessionNumber = parseInt(req.params.sessionNumber);
 
-      if (typeof score !== 'number' || score < 0 || score > 20) {
-        throw new AppError('La note doit être entre 0 et 20', 400);
+      if (typeof score !== 'number' || Number.isNaN(score) || score < 0) {
+        throw new AppError('La note doit être un nombre positif', 400);
       }
 
       if (sessionNumber < 1 || sessionNumber > 4) {
@@ -580,8 +575,8 @@ router.post(
           const scoreRaw = getField(['total', 'score', 'note', 'resultat', 'résultat']);
           const scoreValue = parseFloat(scoreRaw.replace(',', '.'));
 
-          if (Number.isNaN(scoreValue) || scoreValue < 0 || scoreValue > 20) {
-            throw new AppError('Note invalide (0-20)', 400);
+          if (Number.isNaN(scoreValue) || scoreValue < 0) {
+            throw new AppError('Note invalide (nombre positif attendu)', 400);
           }
 
           let ballkidId: string | undefined;
@@ -724,8 +719,8 @@ router.put(
   async (req: AuthRequest, res, next) => {
     try {
       const { score } = req.body;
-      if (typeof score !== 'number' || score < 0 || score > 20) {
-        throw new AppError('La note doit être entre 0 et 20', 400);
+      if (typeof score !== 'number' || Number.isNaN(score) || score < 0) {
+        throw new AppError('La note doit être un nombre positif', 400);
       }
 
       const trainingScore = await prisma.trainingScore.update({

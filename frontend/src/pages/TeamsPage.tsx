@@ -30,8 +30,9 @@ function getScoreColor(score: number, minScore: number, maxScore: number): { bg:
   }
 }
 
-function getTeamAverageColor(score: number): { bg: string; text: string } {
-  const normalized = Math.max(0, Math.min(1, score / 20))
+// Couleur relative au meilleur total d'equipe affiche (les points n'ont pas de plafond fixe).
+function getTeamAverageColor(score: number, maxScore: number): { bg: string; text: string } {
+  const normalized = maxScore > 0 ? Math.max(0, Math.min(1, score / maxScore)) : 0.5
   const hue = 120 * normalized
   return {
     bg: `hsl(${hue}, 70%, 45%)`,
@@ -118,8 +119,8 @@ export default function TeamsPage() {
     const value = mobileScores[ballkidId]
     if (value === undefined || value === '') return
     const score = parseFloat(value)
-    if (isNaN(score) || score < 0 || score > 20) {
-      toast({ variant: 'destructive', title: 'La note doit être entre 0 et 20' })
+    if (isNaN(score) || score < 0) {
+      toast({ variant: 'destructive', title: 'La note doit être un nombre positif' })
       return
     }
     scoreMutation.mutate({ ballkidId, score })
@@ -251,9 +252,9 @@ export default function TeamsPage() {
     }
   })
   const minScore = allScores.length > 0 ? Math.min(...allScores) : 0
-  const maxScore = allScores.length > 0 ? Math.max(...allScores) : 20
+  const maxScore = allScores.length > 0 ? Math.max(...allScores) : 0
   const minTeamAvg = teamAverages.length > 0 ? Math.min(...teamAverages) : 0
-  const maxTeamAvg = teamAverages.length > 0 ? Math.max(...teamAverages) : 20
+  const maxTeamAvg = teamAverages.length > 0 ? Math.max(...teamAverages) : 0
 
   const openGenerateModal = () => {
     const teamCountDefault = teams.length > 0 ? teams.length : 13
@@ -544,7 +545,6 @@ export default function TeamsPage() {
                                 <input
                                   type="number"
                                   min="0"
-                                  max="20"
                                   step="0.5"
                                   placeholder="Note"
                                   value={currentScore ?? ''}
@@ -575,7 +575,7 @@ export default function TeamsPage() {
                 return sum + (overallScore || 0)
               }, 0)
               const teamAverage = teamMembers.length > 0 ? scoresSum / teamMembers.length : null
-              const teamColor = teamAverage != null ? getTeamAverageColor(teamAverage) : null
+              const teamColor = teamAverage != null ? getTeamAverageColor(teamAverage, maxTeamAvg) : null
 
               return (
                 <div

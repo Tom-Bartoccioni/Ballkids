@@ -28,8 +28,9 @@ function getScoreColor(score: number, minScore: number, maxScore: number): { bg:
   }
 }
 
-function getTeamAverageColor(score: number): { bg: string; text: string } {
-  const normalized = Math.max(0, Math.min(1, score / 20))
+// Couleur relative au meilleur total affiche (les points n'ont pas de plafond fixe).
+function getTeamAverageColor(score: number, maxScore: number): { bg: string; text: string } {
+  const normalized = maxScore > 0 ? Math.max(0, Math.min(1, score / maxScore)) : 0.5
   const hue = 120 * normalized
   return {
     bg: `hsl(${hue}, 70%, 45%)`,
@@ -410,7 +411,7 @@ export default function SchedulePage() {
       const value = ballkid.overallAverage ?? ballkid.averageTrainingScore
       if (value != null) scores.push(value)
     })
-    if (scores.length === 0) return { minOverallScore: 0, maxOverallScore: 20 }
+    if (scores.length === 0) return { minOverallScore: 0, maxOverallScore: 0 }
     return {
       minOverallScore: Math.min(...scores),
       maxOverallScore: Math.max(...scores),
@@ -1144,7 +1145,7 @@ export default function SchedulePage() {
     const value = tournamentScores[ballkidId]
     if (!value) return
     const score = parseFloat(value.replace(',', '.'))
-    if (!Number.isNaN(score) && score >= 0 && score <= 20) {
+    if (!Number.isNaN(score) && score >= 0) {
       tournamentScoreMutation.mutate({ ballkidId, score })
       setTournamentScores((prev) => {
         const next = { ...prev }
@@ -1152,7 +1153,7 @@ export default function SchedulePage() {
         return next
       })
     } else {
-      toast({ variant: 'destructive', title: 'Note invalide (0-20)' })
+      toast({ variant: 'destructive', title: 'Note invalide (nombre positif attendu)' })
     }
   }
 
@@ -1721,7 +1722,7 @@ export default function SchedulePage() {
                       const teamAvg = memberScores.length > 0
                         ? memberScores.reduce((sum, value) => sum + value, 0) / memberScores.length
                         : null
-                      const teamColor = teamAvg != null ? getTeamAverageColor(teamAvg) : null
+                      const teamColor = teamAvg != null ? getTeamAverageColor(teamAvg, maxOverallScore) : null
 
                       return (
                     <Card key={team.id} className="overflow-hidden">

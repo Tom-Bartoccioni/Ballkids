@@ -133,19 +133,16 @@ export default function TrainingScorePage() {
     }
   }
 
-  // Calculate total score based on weights
+  // Total = somme brute des points (note x coef), jamais ramenee sur 20
   const calculateTotal = () => {
     let total = 0
-    let totalWeight = 0
     criteria.forEach((c: any) => {
       if (!c.isCalculated) {
         const score = scores[c.id] || 0
-        const normalizedScore = (score / c.maxScore) * 20 // Normalize to 0-20
-        total += normalizedScore * c.weight
-        totalWeight += c.weight
+        total += score * c.weight
       }
     })
-    return totalWeight > 0 ? total / totalWeight : 0
+    return total
   }
 
   const totalScore = calculateTotal()
@@ -274,10 +271,10 @@ export default function TrainingScorePage() {
             {/* Total Score Display */}
             <div className="pt-6 mt-6 border-t">
               <div className="flex items-center justify-between">
-                <span className="text-lg font-semibold">Note totale</span>
+                <span className="text-lg font-semibold">Total des points</span>
                 <span className="text-3xl font-bold text-primary">
-                  {totalScore.toFixed(1)}
-                  <span className="text-lg text-muted-foreground">/20</span>
+                  {Number.isInteger(totalScore) ? totalScore : totalScore.toFixed(1)}
+                  <span className="text-lg text-muted-foreground"> pts</span>
                 </span>
               </div>
             </div>

@@ -32,7 +32,7 @@ export const DEFAULT_SELECTION_CRITERIA = [
 ] as const;
 
 /**
- * Critères par défaut des séances de formation (formule normalisée sur 20,
+ * Critères par défaut des séances de formation (total = somme brute des points,
  * différente de la sélection). Valeurs reprises telles quelles depuis `prisma/seed.ts`.
  */
 const DEFAULT_TRAINING_CRITERIA = [

@@ -367,7 +367,7 @@ export default function BallkidDetailPage() {
     const value = selectionInput.trim()
     if (!value) return
     const score = parseFloat(value.replace(',', '.'))
-    if (!Number.isNaN(score) && score >= 0 && score <= 20) {
+    if (!Number.isNaN(score) && score >= 0) {
       selectionScoreMutation.mutate({
         score,
         tournamentId: ballkid.tournamentId,
@@ -382,7 +382,7 @@ export default function BallkidDetailPage() {
     const value = inputValue.trim()
     if (!value) return
     const score = parseFloat(value.replace(',', '.'))
-    if (!Number.isNaN(score) && score >= 0 && score <= 20) {
+    if (!Number.isNaN(score) && score >= 0) {
       trainingScoreMutation.mutate({
         score,
         sessionNumber,
@@ -398,7 +398,7 @@ export default function BallkidDetailPage() {
     const value = editingSelectionScores[scoreId]
     const raw = value !== undefined ? value : currentScore.toFixed(1)
     const score = parseFloat(raw.replace(',', '.'))
-    if (!Number.isNaN(score) && score >= 0 && score <= 20) {
+    if (!Number.isNaN(score) && score >= 0) {
       updateSelectionScoreMutation.mutate({ scoreId, score })
       setEditingSelectionScores((prev) => {
         const next = { ...prev }
@@ -414,7 +414,7 @@ export default function BallkidDetailPage() {
     const value = editingTrainingScores[scoreId]
     const raw = value !== undefined ? value : currentScore.toFixed(1)
     const score = parseFloat(raw.replace(',', '.'))
-    if (!Number.isNaN(score) && score >= 0 && score <= 20) {
+    if (!Number.isNaN(score) && score >= 0) {
       updateTrainingScoreMutation.mutate({ scoreId, score })
       setEditingTrainingScores((prev) => {
         const next = { ...prev }
@@ -650,7 +650,7 @@ export default function BallkidDetailPage() {
                                   e.preventDefault()
                                   const raw = editingSelectionValue.trim()
                                   const score = parseFloat(raw.replace(',', '.'))
-                                  if (!Number.isNaN(score) && score >= 0 && score <= 20) {
+                                  if (!Number.isNaN(score) && score >= 0) {
                                     updateSelectionScoreMutation.mutate({
                                       scoreId: selectionScoreForUser.id,
                                       score,
@@ -744,7 +744,7 @@ export default function BallkidDetailPage() {
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">Moyenne</span>
                   <span className="text-2xl font-bold text-blue-600">
-                    {trainingAvg != null ? `${trainingAvg.toFixed(1)}/20` : '-'}
+                    {trainingAvg != null ? `${Number.isInteger(trainingAvg) ? trainingAvg : trainingAvg.toFixed(1)} pts` : '-'}
                   </span>
                 </div>
                 <div className="space-y-2 pt-2 border-t max-h-32 overflow-y-auto">
@@ -774,7 +774,7 @@ export default function BallkidDetailPage() {
                                       e.preventDefault()
                                       const raw = editingTrainingValue.trim()
                                       const nextScore = parseFloat(raw.replace(',', '.'))
-                                      if (!Number.isNaN(nextScore) && nextScore >= 0 && nextScore <= 20) {
+                                      if (!Number.isNaN(nextScore) && nextScore >= 0) {
                                         updateTrainingScoreMutation.mutate({
                                           scoreId: score.id,
                                           score: nextScore,
@@ -876,7 +876,7 @@ export default function BallkidDetailPage() {
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">Moyenne</span>
                     <span className="text-2xl font-bold text-green-600">
-                      {tournamentAvg != null ? `${tournamentAvg.toFixed(1)}/20` : '-'}
+                      {tournamentAvg != null ? `${Number.isInteger(tournamentAvg) ? tournamentAvg : tournamentAvg.toFixed(1)} pts` : '-'}
                     </span>
                   </div>
                   <div className="space-y-2 pt-2 border-t">
@@ -909,7 +909,7 @@ export default function BallkidDetailPage() {
                                       e.preventDefault()
                                       const raw = editingTournamentValue.trim()
                                       const score = parseFloat(raw.replace(',', '.'))
-                                      if (!Number.isNaN(score) && score >= 0 && score <= 20) {
+                                      if (!Number.isNaN(score) && score >= 0) {
                                         tournamentScoreMutation.mutate({
                                           score,
                                           dayNumber: day.dayNumber,
@@ -976,7 +976,7 @@ export default function BallkidDetailPage() {
                                     e.preventDefault()
                                     const raw = draftValue.trim()
                                     const score = parseFloat(raw.replace(',', '.'))
-                                    if (!Number.isNaN(score) && score >= 0 && score <= 20) {
+                                    if (!Number.isNaN(score) && score >= 0) {
                                       tournamentScoreMutation.mutate({
                                         score,
                                         dayNumber: day.dayNumber,
@@ -995,7 +995,7 @@ export default function BallkidDetailPage() {
                                 onClick={() => {
                                   const raw = draftValue.trim()
                                   const score = parseFloat(raw.replace(',', '.'))
-                                  if (!Number.isNaN(score) && score >= 0 && score <= 20) {
+                                  if (!Number.isNaN(score) && score >= 0) {
                                     tournamentScoreMutation.mutate({
                                       score,
                                       dayNumber: day.dayNumber,

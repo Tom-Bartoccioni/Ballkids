@@ -566,8 +566,8 @@ router.post(
       const { ballkidId, score } = req.body;
       const scorerId = req.user!.id;
 
-      if (typeof score !== 'number' || score < 0 || score > 20) {
-        throw new AppError('La note doit être entre 0 et 20', 400);
+      if (typeof score !== 'number' || Number.isNaN(score) || score < 0) {
+        throw new AppError('La note doit être un nombre positif', 400);
       }
 
       const day = await prisma.tournamentDay.findUnique({
@@ -816,8 +816,8 @@ router.post(
           const scoreRaw = getField(['total', 'score', 'note', 'resultat', 'résultat']);
           const scoreValue = parseFloat(scoreRaw.replace(',', '.'));
 
-          if (Number.isNaN(scoreValue) || scoreValue < 0 || scoreValue > 20) {
-            throw new AppError('Note invalide (0-20)', 400);
+          if (Number.isNaN(scoreValue) || scoreValue < 0) {
+            throw new AppError('Note invalide (nombre positif attendu)', 400);
           }
 
           let ballkidId: string | undefined;

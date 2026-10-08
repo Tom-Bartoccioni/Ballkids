@@ -335,7 +335,7 @@ export default function SelectionPage() {
 
   const handleScoreChange = (ballkidId: string, value: string) => {
     // Permettre seulement les nombres entre 0 et 20
-    if (value === '' || (/^\d*\.?\d*$/.test(value) && parseFloat(value) <= 20)) {
+    if (value === '' || /^\d*\.?\d*$/.test(value)) {
       setScores(prev => ({ ...prev, [ballkidId]: value }))
     }
   }
@@ -344,7 +344,7 @@ export default function SelectionPage() {
     const scoreValue = scores[ballkidId]
     if (scoreValue && !isNaN(parseFloat(scoreValue))) {
       const score = parseFloat(scoreValue)
-      if (score >= 0 && score <= 20) {
+      if (score >= 0) {
         scoreMutation.mutate({ ballkidId, score })
       }
     }

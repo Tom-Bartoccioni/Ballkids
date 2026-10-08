@@ -102,12 +102,12 @@ afterAll(async () => {
 });
 
 // ---------------------------------------------------------------------------
-// Calcul exact du total = moyenne pondérée normalisée sur 20
-// total = Σ((valeur/maxScore)*20*weight) / Σweight
+// Calcul exact du total = somme brute des points
+// total = Σ(valeur * weight), sans normalisation sur 20 (demande admin)
 // ---------------------------------------------------------------------------
 
 describe('POST /api/training/:tournamentId/:sessionNumber/score - calcul du total', () => {
-  it('critère unique valeur=3 maxScore=5 weight=1 -> total = 12.00', async () => {
+  it('critère unique valeur=3 maxScore=5 weight=1 -> total = 3 (pas de /20)', async () => {
     const session = await createSession(tournamentId, 10);
     const crit = await createCriteria(session.id, [{ name: 'Technique', maxScore: 5, weight: 1 }]);
     const ballkidId = await createBallkid(tournamentId, 'CalcA', 'calca@test.com');
@@ -118,14 +118,14 @@ describe('POST /api/training/:tournamentId/:sessionNumber/score - calcul du tota
       .send({ ballkidId, scores: { [crit['Technique']]: 3 } });
 
     expect(res.status).toBe(200);
-    // (3/5)*20 = 12 ; /Σweight (1) = 12
-    expect(res.body.data.trainingScore.totalScore).toBe(12);
+    // 3 x 1 = 3 : la note n'est pas ramenee sur 20
+    expect(res.body.data.trainingScore.totalScore).toBe(3);
   });
 
-  it('critère weight=0 ignoré dans le numérateur ET le dénominateur', async () => {
+  it('critère weight=0 ne compte pas', async () => {
     const session = await createSession(tournamentId, 11);
-    // A: max10 w2 v10 -> normalisé 20, num=40, poids=2
-    // B: max10 w0 v5  -> ignoré (poids 0) : ni au num ni au dénom
+    // A: max10 w2 v10 -> 20 points
+    // B: max10 w0 v5  -> 0 point (poids 0)
     const crit = await createCriteria(session.id, [
       { name: 'Actif', maxScore: 10, weight: 2 },
       { name: 'Ignore', maxScore: 10, weight: 0 },
@@ -138,11 +138,11 @@ describe('POST /api/training/:tournamentId/:sessionNumber/score - calcul du tota
       .send({ ballkidId, scores: { [crit['Actif']]: 10, [crit['Ignore']]: 5 } });
 
     expect(res.status).toBe(200);
-    // 40 / 2 = 20 (le critère à weight 0 n'altère rien)
+    // 10 x 2 + 5 x 0 = 20
     expect(res.body.data.trainingScore.totalScore).toBe(20);
   });
 
-  it('tous les poids à 0 -> total = 0 (pas de NaN / division par zéro)', async () => {
+  it('tous les poids à 0 -> total = 0', async () => {
     const session = await createSession(tournamentId, 12);
     const crit = await createCriteria(session.id, [
       { name: 'Zero1', maxScore: 10, weight: 0 },
@@ -162,8 +162,8 @@ describe('POST /api/training/:tournamentId/:sessionNumber/score - calcul du tota
 
   it('critère isCalculated:true ignoré (BUG connu: formule jamais évaluée)', async () => {
     const session = await createSession(tournamentId, 13);
-    // A: max10 w1 v10 -> 20
-    // B: isCalculated -> ignoré ; s'il était compté (v5) le total tomberait à 15
+    // A: max10 w1 v10 -> 10
+    // B: isCalculated -> ignoré ; s'il était compté (v5) le total monterait à 15
     const crit = await createCriteria(session.id, [
       { name: 'Reel', maxScore: 10, weight: 1 },
       { name: 'Calcule', maxScore: 10, weight: 1, isCalculated: true },
@@ -176,8 +176,8 @@ describe('POST /api/training/:tournamentId/:sessionNumber/score - calcul du tota
       .send({ ballkidId, scores: { [crit['Reel']]: 10, [crit['Calcule']]: 5 } });
 
     expect(res.status).toBe(200);
-    // 20 / 1 = 20 ; le critère isCalculated est exclu (num + dénom)
-    expect(res.body.data.trainingScore.totalScore).toBe(20);
+    // 10 x 1 = 10 ; le critère isCalculated est exclu
+    expect(res.body.data.trainingScore.totalScore).toBe(10);
   });
 
   it('met isPresent=true par défaut lors du POST', async () => {
@@ -205,23 +205,23 @@ describe('Unicité session + ballkid + scorer', () => {
     const crit = await createCriteria(session.id, [{ name: 'Uni', maxScore: 10, weight: 1 }]);
     const ballkidId = await createBallkid(tournamentId, 'CalcE', 'calce@test.com');
 
-    // Admin note une première fois (v10 -> 20)
+    // Admin note une première fois (v10 -> 10)
     const first = await request(app)
       .post(`/api/training/${tournamentId}/14/score`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ ballkidId, scores: { [crit['Uni']]: 10 } });
     expect(first.status).toBe(200);
-    expect(first.body.data.trainingScore.totalScore).toBe(20);
+    expect(first.body.data.trainingScore.totalScore).toBe(10);
     const firstId = first.body.data.trainingScore.id;
 
-    // Admin re-note (v5 -> 10) : upsert sur la même ligne
+    // Admin re-note (v5 -> 5) : upsert sur la même ligne
     const replace = await request(app)
       .post(`/api/training/${tournamentId}/14/score`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ ballkidId, scores: { [crit['Uni']]: 5 } });
     expect(replace.status).toBe(200);
     expect(replace.body.data.trainingScore.id).toBe(firstId);
-    expect(replace.body.data.trainingScore.totalScore).toBe(10);
+    expect(replace.body.data.trainingScore.totalScore).toBe(5);
 
     // Coach note le même ramasseur : nouvelle ligne (scorer différent)
     const coachScore = await request(app)
@@ -384,13 +384,20 @@ describe('POST /api/training/:tournamentId/:sessionNumber/score-simple', () => {
     expect(res.status).toBe(400);
   });
 
-  it('rejette une note hors 0-20 (400)', async () => {
+  it('rejette une note négative (400) mais accepte une note > 20 (plus de plafond)', async () => {
     const ballkidId = await createBallkid(tournamentId, 'BadScore', 'badscore@test.com');
-    const res = await request(app)
+    const bad = await request(app)
       .post(`/api/training/${tournamentId}/3/score-simple`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ ballkidId, score: 25 });
-    expect(res.status).toBe(400);
+      .send({ ballkidId, score: -2 });
+    expect(bad.status).toBe(400);
+
+    const big = await request(app)
+      .post(`/api/training/${tournamentId}/3/score-simple`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ ballkidId, score: 185 });
+    expect(big.status).toBe(200);
+    expect(big.body.data.trainingScore.totalScore).toBe(185);
   });
 });
 
@@ -416,7 +423,7 @@ describe('PUT /api/training/score/:scoreId', () => {
     expect(res.body.data.trainingScore.isPresent).toBe(true);
   });
 
-  it('rejette une note hors 0-20 (400)', async () => {
+  it('rejette une note négative (400)', async () => {
     const session = await createSession(tournamentId, 17);
     const ballkidId = await createBallkid(tournamentId, 'PutBad', 'putbad@test.com');
     const score = await prisma.trainingScore.create({
@@ -432,14 +439,14 @@ describe('PUT /api/training/score/:scoreId', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Import CSV : notes >20 ou <0 rejetées ligne par ligne (pas de normalisation)
+// Import CSV : notes négatives rejetées ligne par ligne ; aucun plafond, pas de normalisation
 // ---------------------------------------------------------------------------
 
 describe('POST /api/training/:tournamentId/:sessionNumber/import-csv', () => {
-  it('rejette les notes hors 0-20 ligne par ligne sans normaliser', async () => {
+  it('rejette les notes négatives ligne par ligne, garde les notes > 20 telles quelles', async () => {
     const ballkidId = await createBallkid(tournamentId, 'ImportKid', 'importkid@test.com');
 
-    const csv = 'email;note\nimportkid@test.com;15\nimportkid@test.com;25\nimportkid@test.com;-3\n';
+    const csv = 'email;note\nimportkid@test.com;-3\nimportkid@test.com;125\n';
 
     const res = await request(app)
       .post(`/api/training/${tournamentId}/4/import-csv`)
@@ -447,14 +454,14 @@ describe('POST /api/training/:tournamentId/:sessionNumber/import-csv', () => {
       .attach('file', Buffer.from(csv, 'utf8'), 'notes.csv');
 
     expect(res.status).toBe(200);
-    expect(res.body.data.imported).toBe(1); // seule la note 15 passe
-    expect(res.body.data.errors).toBe(2); // 25 et -3 rejetées
+    expect(res.body.data.imported).toBe(1); // seule la note 125 passe
+    expect(res.body.data.errors).toBe(1); // -3 rejetée
 
-    // La note importée n'a PAS été normalisée : elle vaut 15
+    // La note importée n'a PAS été normalisée : elle vaut 125
     const stored = await prisma.trainingScore.findFirst({
       where: { ballkidId },
     });
-    expect(stored?.totalScore).toBe(15);
+    expect(stored?.totalScore).toBe(125);
   });
 });
 
@@ -474,7 +481,7 @@ describe('Permissions', () => {
       .send({ ballkidId, scores: { [crit['Perm']]: 10 } });
 
     expect(res.status).toBe(200);
-    expect(res.body.data.trainingScore.totalScore).toBe(20);
+    expect(res.body.data.trainingScore.totalScore).toBe(10);
   });
 
   it('coach 403 sur PUT /criteria', async () => {
