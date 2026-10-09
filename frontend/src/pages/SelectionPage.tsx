@@ -334,7 +334,7 @@ export default function SelectionPage() {
   const sortedRanking = useMemo(() => sortData(filteredRanking), [filteredRanking, sortKey, sortOrder])
 
   const handleScoreChange = (ballkidId: string, value: string) => {
-    // Permettre seulement les nombres entre 0 et 20
+    // Nombre positif uniquement (total de points, sans plafond)
     if (value === '' || /^\d*\.?\d*$/.test(value)) {
       setScores(prev => ({ ...prev, [ballkidId]: value }))
     }
@@ -527,7 +527,7 @@ export default function SelectionPage() {
               <CardTitle>Noter les ramasseurs</CardTitle>
               {isAdmin && (
                 <p className="text-xs text-muted-foreground mt-1">
-                  Import CSV: colonnes `email` ou `prenom` + `nom`, et `total` (ou `note`/`score`), valeur 0-20.
+                  Import CSV: colonnes `email` ou `prenom` + `nom`, et `total` (ou `note`/`score`) en points, nombre positif.
                 </p>
               )}
             </div>
@@ -638,7 +638,7 @@ export default function SelectionPage() {
                                 <div className="flex items-center gap-2">
                                   <Input
                                     type="text"
-                                    placeholder="0-20"
+                                    placeholder="Points"
                                     value={scores[ballkid.id] || ''}
                                     onChange={(e) => handleScoreChange(ballkid.id, e.target.value)}
                                     onKeyPress={(e) => handleKeyPress(e, ballkid.id)}

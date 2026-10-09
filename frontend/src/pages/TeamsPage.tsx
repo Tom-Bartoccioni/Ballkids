@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label'
 import { useToast } from '@/hooks/use-toast'
 import { UsersRound, Wand2, User, GripVertical, ArrowLeftRight, X, Check, Trash2, ChevronDown, ChevronUp } from 'lucide-react'
 
-// Fonction pour obtenir une couleur dégradée de rouge à vert basée sur un score (0-20)
+// Couleur degradee de rouge a vert, relative au min/max des scores affiches
 function getScoreColor(score: number, minScore: number, maxScore: number): { bg: string; text: string } {
   const range = maxScore - minScore
   const normalized = range > 0 ? (score - minScore) / range : 0.5

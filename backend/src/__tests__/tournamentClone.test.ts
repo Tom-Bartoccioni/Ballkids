@@ -99,7 +99,7 @@ describe('POST /api/tournaments - partir de zéro', () => {
     const poubSansR = session!.criteria.find((c) => c.name === 'Poubelle sans rebond');
     expect(poubSansR?.weight).toBe(3);
     expect(session!.criteria.find((c) => c.abbreviation === 'ANCIEN')?.maxScore).toBe(40);
-    // La formation garde ses 4 criteres generiques (formule differente, normalisee sur 20)
+    // La formation garde ses 4 criteres generiques (bareme distinct de la selection)
     const s1 = await prisma.trainingSession.findFirst({ where: { tournamentId: newId, sessionNumber: 1 }, include: { criteria: true } });
     expect(s1?.criteria.length).toBe(4);
 

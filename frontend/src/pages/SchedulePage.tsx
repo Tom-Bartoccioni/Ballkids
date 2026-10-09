@@ -388,7 +388,7 @@ export default function SchedulePage() {
 
   const { minDayScore: minDayScore, maxDayScore: maxDayScore } = useMemo(() => {
     const values = Array.from(dayScoreByBallkidId.values())
-    if (values.length === 0) return { minDayScore: 0, maxDayScore: 20 }
+    if (values.length === 0) return { minDayScore: 0, maxDayScore: 0 }
     return {
       minDayScore: Math.min(...values),
       maxDayScore: Math.max(...values),
@@ -1938,7 +1938,7 @@ export default function SchedulePage() {
                                       <Input
                                         type="text"
                                         inputMode="decimal"
-                                        placeholder="0-20"
+                                        placeholder="Points"
                                         value={tournamentScores[ballkid.id] || ''}
                                         onChange={(e) =>
                                           setTournamentScores((prev) => ({
@@ -2194,7 +2194,7 @@ export default function SchedulePage() {
                                     <Input
                                       type="text"
                                       inputMode="decimal"
-                                      placeholder="0-20"
+                                      placeholder="Points"
                                       value={tournamentScores[ballkid.id] || ''}
                                       onChange={(e) =>
                                         setTournamentScores((prev) => ({

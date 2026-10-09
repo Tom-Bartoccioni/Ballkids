@@ -366,7 +366,7 @@ export default function TrainingPage() {
       </div>
       {isAdmin && (
         <p className="text-xs text-muted-foreground">
-          Import CSV: colonnes acceptées `email` ou `prenom` + `nom` (ou `nom` seul), et `total` (ou `note`/`score`), valeur 0-20.
+          Import CSV: colonnes acceptées `email` ou `prenom` + `nom` (ou `nom` seul), et `total` (ou `note`/`score`) en points, nombre positif.
         </p>
       )}
 
@@ -669,7 +669,7 @@ export default function TrainingPage() {
                                   <Input
                                     type="text"
                                     inputMode="decimal"
-                                    placeholder="0-20"
+                                    placeholder="Points"
                                     value={scores[inputKey] || ''}
                                     onChange={(e) => handleScoreChange(item.id, activeSession, e.target.value)}
                                     onKeyPress={(e) => handleKeyPress(e, item.id, activeSession)}

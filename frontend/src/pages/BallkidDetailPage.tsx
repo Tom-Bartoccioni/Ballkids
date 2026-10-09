@@ -374,7 +374,7 @@ export default function BallkidDetailPage() {
         ballkidId: ballkid.id,
       })
     } else {
-      toast({ variant: 'destructive', title: 'Note invalide (0-20)' })
+      toast({ variant: 'destructive', title: 'Note invalide (nombre positif attendu)' })
     }
   }
 
@@ -390,7 +390,7 @@ export default function BallkidDetailPage() {
         ballkidId: ballkid.id,
       })
     } else {
-      toast({ variant: 'destructive', title: 'Note invalide (0-20)' })
+      toast({ variant: 'destructive', title: 'Note invalide (nombre positif attendu)' })
     }
   }
 
@@ -406,7 +406,7 @@ export default function BallkidDetailPage() {
         return next
       })
     } else {
-      toast({ variant: 'destructive', title: 'Note invalide (0-20)' })
+      toast({ variant: 'destructive', title: 'Note invalide (nombre positif attendu)' })
     }
   }
 
@@ -422,7 +422,7 @@ export default function BallkidDetailPage() {
         return next
       })
     } else {
-      toast({ variant: 'destructive', title: 'Note invalide (0-20)' })
+      toast({ variant: 'destructive', title: 'Note invalide (nombre positif attendu)' })
     }
   }
 
@@ -657,7 +657,7 @@ export default function BallkidDetailPage() {
                                     })
                                     setEditingSelectionId(null)
                                   } else if (raw) {
-                                    toast({ variant: 'destructive', title: 'Note invalide (0-20)' })
+                                    toast({ variant: 'destructive', title: 'Note invalide (nombre positif attendu)' })
                                   }
                                 } else if (e.key === 'Escape') {
                                   setEditingSelectionId(null)
@@ -698,7 +698,7 @@ export default function BallkidDetailPage() {
                           <Input
                             type="text"
                             inputMode="decimal"
-                            placeholder="0-20"
+                            placeholder="Points"
                             value={selectionInput}
                             onChange={(e) => setSelectionInput(e.target.value)}
                             onKeyDown={(e) => {
@@ -781,7 +781,7 @@ export default function BallkidDetailPage() {
                                         })
                                         setEditingTrainingId(null)
                                       } else if (raw) {
-                                        toast({ variant: 'destructive', title: 'Note invalide (0-20)' })
+                                        toast({ variant: 'destructive', title: 'Note invalide (nombre positif attendu)' })
                                       }
                                     } else if (e.key === 'Escape') {
                                       setEditingTrainingId(null)
@@ -822,7 +822,7 @@ export default function BallkidDetailPage() {
                               <Input
                                 type="text"
                                 inputMode="decimal"
-                                placeholder="0-20"
+                                placeholder="Points"
                                 value={draftValue}
                                 onChange={(e) =>
                                   setTrainingDrafts((prev) => ({
@@ -918,7 +918,7 @@ export default function BallkidDetailPage() {
                                         })
                                         setEditingTournamentDay(null)
                                       } else if (raw) {
-                                        toast({ variant: 'destructive', title: 'Note invalide (0-20)' })
+                                        toast({ variant: 'destructive', title: 'Note invalide (nombre positif attendu)' })
                                       }
                                     } else if (e.key === 'Escape') {
                                       setEditingTournamentDay(null)
@@ -963,7 +963,7 @@ export default function BallkidDetailPage() {
                               <Input
                                 type="text"
                                 inputMode="decimal"
-                                placeholder="0-20"
+                                placeholder="Points"
                                 value={draftValue}
                                 onChange={(e) =>
                                   setTournamentDrafts((prev) => ({
@@ -984,7 +984,7 @@ export default function BallkidDetailPage() {
                                         ballkidId: ballkid.id,
                                       })
                                     } else if (raw) {
-                                      toast({ variant: 'destructive', title: 'Note invalide (0-20)' })
+                                      toast({ variant: 'destructive', title: 'Note invalide (nombre positif attendu)' })
                                     }
                                   }
                                 }}
@@ -1003,7 +1003,7 @@ export default function BallkidDetailPage() {
                                       ballkidId: ballkid.id,
                                     })
                                   } else if (raw) {
-                                    toast({ variant: 'destructive', title: 'Note invalide (0-20)' })
+                                    toast({ variant: 'destructive', title: 'Note invalide (nombre positif attendu)' })
                                   }
                                 }}
                                 disabled={!draftValue || tournamentScoreMutation.isPending}
